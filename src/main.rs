@@ -1,9 +1,11 @@
 use anyhow::Result;
+use behaviour::LocalExBehaviour;
 use futures::StreamExt;
 use libp2p::swarm::SwarmEvent;
-use libp2p::{identity, mdns, PeerId, SwarmBuilder};
+use libp2p::{identity, SwarmBuilder};
 use secret::SecretStore;
 
+mod behaviour;
 mod secret;
 
 #[tokio::main]
@@ -20,13 +22,10 @@ async fn main() -> Result<()> {
         .with_tokio()
         .with_tcp(
             libp2p::tcp::Config::default(),
-            libp2p::tls::Config::new,
+            libp2p::noise::Config::new,
             libp2p::yamux::Config::default,
         )?
-        .with_behaviour(|key| {
-            mdns::tokio::Behaviour::new(mdns::Config::default(), PeerId::from(key.public()))
-                .expect("cannot create mDNS behaviour")
-        })?
+        .with_behaviour(LocalExBehaviour::new)?
         .build();
 
     swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
