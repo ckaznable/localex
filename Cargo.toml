@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-libp2p = { version = "0.53", features = ["tcp", "tokio", "noise", "yamux", "macros", "gossipsub", "mdns"] }
+libp2p = { version = "0.53", features = ["tcp", "tokio", "noise", "yamux", "macros", "gossipsub", "mdns", "request-response", "cbor"] }
 futures = "0.3.21"
 tokio = { version = "1", features = ["full"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -14,3 +14,5 @@ serde = { version = "1", features = ["derive"] }
 ciborium = "0.2.2"
 rsa = { version = "0.9.6", features = ["sha2"] }
 rand = "0.8.5"
+serde_repr = "0.1.19"
+hostname = "0.4.0"
