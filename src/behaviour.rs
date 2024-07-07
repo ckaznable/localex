@@ -5,17 +5,29 @@ use std::{
 };
 
 use libp2p::{
-    gossipsub,
-    identity::Keypair,
-    mdns,
-    swarm::NetworkBehaviour,
-    PeerId,
+    gossipsub, identity::Keypair, mdns, request_response::{self, ProtocolSupport}, swarm::NetworkBehaviour, PeerId,
+    StreamProtocol,
 };
+
+#[derive(serde_repr::Serialize_repr, serde_repr::Deserialize_repr, PartialEq, Debug)]
+#[repr(u8)]
+pub enum StreamKind {
+    Auth,
+    Handshake,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct LocalExAuthRequest {
+    kind: StreamKind,
+    public_key: Option<Vec<u8>>,
+    hostname: Option<String>,
+}
 
 #[derive(NetworkBehaviour)]
 pub struct LocalExBehaviour {
     pub gossipsub: gossipsub::Behaviour,
     pub mdns: mdns::tokio::Behaviour,
+    pub rr_auth: request_response::cbor::Behaviour<LocalExAuthRequest, LocalExAuthRequest>,
 }
 
 impl LocalExBehaviour {
@@ -23,11 +35,30 @@ impl LocalExBehaviour {
         Self {
             gossipsub: Self::create_gossipsub_behavior(key.clone()),
             mdns: Self::create_mdns_behavior(PeerId::from(key.public())),
+            rr_auth: Self::create_auth_request_response(),
         }
     }
 
     fn create_mdns_behavior(local_peer_id: PeerId) -> mdns::tokio::Behaviour {
         mdns::tokio::Behaviour::new(mdns::Config::default(), local_peer_id).unwrap()
+    }
+
+    fn create_auth_request_response() -> request_response::cbor::Behaviour<LocalExAuthRequest, LocalExAuthRequest> {
+        let endpoint = [
+            (
+                StreamProtocol::new("/auth"),
+                ProtocolSupport::Full,
+            ),
+            (
+                StreamProtocol::new("/handshake"),
+                ProtocolSupport::Full,
+            )
+        ];
+
+        let cfg = request_response::Config::default()
+            .with_request_timeout(Duration::from_secs(30)); 
+
+        request_response::cbor::Behaviour::new(endpoint, cfg)
     }
 
     fn create_gossipsub_behavior(id_keys: Keypair) -> gossipsub::Behaviour {
