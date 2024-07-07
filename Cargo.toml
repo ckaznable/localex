@@ -10,4 +10,7 @@ tokio = { version = "1", features = ["full"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 anyhow = "1.0.86"
 secret-service = { version = "4.0.0", features = ["rt-tokio-crypto-rust"] }
-rpassword = "7.3.1"
+serde = { version = "1", features = ["derive"] }
+ciborium = "0.2.2"
+rsa = { version = "0.9.6", features = ["sha2"] }
+rand = "0.8.5"
