@@ -2,49 +2,34 @@ use std::collections::HashMap;
 
 use libp2p::PeerId;
 
-const RETRY_LIMIT: u8 = 3;
-
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub enum PeerVerifyState {
     Verified,
     Blocked,
-    WaitingVerification(u8),
+    #[default]
+    WaitingVerification,
 }
 
 impl PeerVerifyState {
-    fn on_fail(state: &Self) -> Self {
-        match *state {
-            Self::WaitingVerification(count) => {
-                if count >= RETRY_LIMIT {
-                    Self::Blocked
-                } else {
-                    Self::WaitingVerification(count + 1)
-                }
-            },
-            s => s
-        }
+    pub fn should_skip_verify(&self) -> bool {
+        *self == Self::Verified || *self == Self::Blocked
     }
 }
 
+#[derive(Clone)]
 pub struct RemotePeer {
-    peer_id: PeerId,
-    state: PeerVerifyState,
-    hostname: Option<String>,
+    pub peer_id: PeerId,
+    pub state: PeerVerifyState,
+    pub hostname: Option<String>,
 }
 
 impl RemotePeer {
     fn new(peer_id: PeerId) -> Self {
-        let state = PeerVerifyState::WaitingVerification(0);
-
         Self {
             peer_id,
-            state,
+            state: PeerVerifyState::default(),
             hostname: None,
         }
-    }
-
-    fn hostname(&mut self, hostname: String) {
-        self.hostname = Some(hostname);
     }
 }
 
@@ -68,32 +53,29 @@ impl LocalExProtocol {
     }
 
     pub fn remove_peer(&mut self, peer_id: &PeerId) {
-        if let Some(true) = self.is_blocked(peer_id) {
-            return;
-        }
-
         self.peers.remove(peer_id);
     }
 
-    pub fn verify(&mut self, peer_id: &PeerId, on_verify: fn() -> bool) -> bool {
-        let Some(peer) = self.peers.get(peer_id) else {
+    pub async fn handle_auth(&mut self, peer_id: PeerId) -> bool {
+        let Some(peer) = self.peers.get(&peer_id) else {
             return false;
         };
 
-        if peer.state == PeerVerifyState::Blocked {
+        if peer.state.should_skip_verify() {
             return false;
         }
 
-        (on_verify)()
+        self.verify(peer).await
     }
 
-    pub fn is_verified(&self, peer_id: &PeerId) -> Option<bool> {
-        let peer = self.peers.get(peer_id)?;
-        Some(peer.state == PeerVerifyState::Verified)
+    pub async fn verify(&self, _: &RemotePeer) -> bool {
+        true
     }
 
-    pub fn is_blocked(&self, peer_id: &PeerId) -> Option<bool> {
-        let peer = self.peers.get(peer_id)?;
-        Some(peer.state == PeerVerifyState::Blocked)
+    pub fn verified(&mut self, peer_id: &PeerId, hostname: String) {
+        if let Some(peer) = self.peers.get_mut(peer_id) {
+            peer.state = PeerVerifyState::Verified;
+            peer.hostname = Some(hostname);
+        }
     }
 }

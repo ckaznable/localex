@@ -8,26 +8,32 @@ use libp2p::{
     gossipsub, identity::Keypair, mdns, request_response::{self, ProtocolSupport}, swarm::NetworkBehaviour, PeerId,
     StreamProtocol,
 };
+use serde::{Deserialize, Serialize};
+use serde_repr::{Deserialize_repr, Serialize_repr};
 
-#[derive(serde_repr::Serialize_repr, serde_repr::Deserialize_repr, PartialEq, Debug)]
+#[derive(Serialize_repr, Deserialize_repr, PartialEq, Eq, Debug)]
 #[repr(u8)]
-pub enum StreamKind {
-    Auth,
-    Handshake,
+pub enum AuthResponseState {
+    Accept,
+    Deny,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct LocalExAuthRequest {
-    kind: StreamKind,
-    public_key: Option<Vec<u8>>,
-    hostname: Option<String>,
+    pub hostname: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LocalExAuthResponse {
+    pub state: AuthResponseState,
+    pub hostname: String,
 }
 
 #[derive(NetworkBehaviour)]
 pub struct LocalExBehaviour {
     pub gossipsub: gossipsub::Behaviour,
     pub mdns: mdns::tokio::Behaviour,
-    pub rr_auth: request_response::cbor::Behaviour<LocalExAuthRequest, LocalExAuthRequest>,
+    pub rr_auth: request_response::cbor::Behaviour<LocalExAuthRequest, LocalExAuthResponse>,
 }
 
 impl LocalExBehaviour {
@@ -43,22 +49,12 @@ impl LocalExBehaviour {
         mdns::tokio::Behaviour::new(mdns::Config::default(), local_peer_id).unwrap()
     }
 
-    fn create_auth_request_response() -> request_response::cbor::Behaviour<LocalExAuthRequest, LocalExAuthRequest> {
-        let endpoint = [
-            (
-                StreamProtocol::new("/auth"),
-                ProtocolSupport::Full,
-            ),
-            (
-                StreamProtocol::new("/handshake"),
-                ProtocolSupport::Full,
-            )
-        ];
-
+    fn create_auth_request_response() -> request_response::cbor::Behaviour<LocalExAuthRequest, LocalExAuthResponse> {
+        let protocol = [(StreamProtocol::new("/localex/auth/1.0.0"), ProtocolSupport::Full)];
         let cfg = request_response::Config::default()
             .with_request_timeout(Duration::from_secs(30)); 
 
-        request_response::cbor::Behaviour::new(endpoint, cfg)
+        request_response::cbor::Behaviour::new(protocol, cfg)
     }
 
     fn create_gossipsub_behavior(id_keys: Keypair) -> gossipsub::Behaviour {

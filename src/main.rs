@@ -1,8 +1,8 @@
 use anyhow::Result;
-use behaviour::{LocalExBehaviour, LocalExBehaviourEvent};
+use behaviour::{AuthResponseState, LocalExAuthResponse, LocalExBehaviour, LocalExBehaviourEvent};
 use futures::StreamExt;
 use libp2p::swarm::SwarmEvent;
-use libp2p::{gossipsub, mdns, SwarmBuilder};
+use libp2p::{gossipsub, mdns, request_response, SwarmBuilder};
 use secret::SecretStore;
 
 mod behaviour;
@@ -15,7 +15,6 @@ async fn main() -> Result<()> {
     let store = SecretStore::new().await?;
 
     let local_keypair = store.get_local_key().await.expect("can't get libp2p keypair");
-
     store.save_local_key(&local_keypair).await?;
 
     let mut swarm = SwarmBuilder::with_existing_identity(local_keypair)
@@ -34,25 +33,41 @@ async fn main() -> Result<()> {
         match swarm.select_next_some().await {
             SwarmEvent::NewListenAddr { address, .. } => println!("Local node is listening on {address}"),
             SwarmEvent::Behaviour(event) => match event {
+                LocalExBehaviourEvent::RrAuth(request_response::Event::Message { peer, message: request_response::Message::Request { request, channel, .. }}) => {
+                    let mut state = AuthResponseState::Deny;
+                    if localex.handle_auth(peer).await {
+                        localex.verified(&peer, request.hostname);
+                        swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer);
+                        state = AuthResponseState::Accept;
+                    }
+
+                    let _ = swarm.behaviour_mut().rr_auth.send_response(channel, LocalExAuthResponse {
+                        state,
+                        hostname: hostname::get().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|_| String::from("unknown")),
+                    });
+                }
+                LocalExBehaviourEvent::RrAuth(request_response::Event::Message { peer, message: request_response::Message::Response { response, .. }}) => {
+                    if response.state == AuthResponseState::Accept {
+                        localex.verified(&peer, response.hostname);
+                        swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer);
+                    }
+                }
                 LocalExBehaviourEvent::Gossipsub(gossipsub::Event::GossipsubNotSupported { peer_id }) => {
                     localex.remove_peer(&peer_id);
-                },
+                }
                 LocalExBehaviourEvent::Mdns(mdns::Event::Discovered(list)) => {
-                    for (peer_id, addr) in list {
+                    for (peer_id, _) in list {
                         println!("mDNS discovered a new peer: {peer_id}");
-                        swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
-                        swarm.behaviour_mut().rr_auth.add_address(&peer_id, addr);
                         localex.add_peer(peer_id);
                     }
-                },
+                }
                 LocalExBehaviourEvent::Mdns(mdns::Event::Expired(list)) => {
-                    for (peer_id, addr) in list {
+                    for (peer_id, _) in list {
                         println!("mDNS discover peer has expired: {peer_id}");
                         swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
-                        swarm.behaviour_mut().rr_auth.remove_address(&peer_id, &addr);
                         localex.remove_peer(&peer_id);
                     }
-                },
+                }
                 _ => {}
             },
             _ => {}
