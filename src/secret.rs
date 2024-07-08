@@ -54,8 +54,11 @@ impl<'a> SecretStore<'a> {
     }
 
     pub async fn get_local_key(&self) -> Option<Keypair> {
-        let secret = self.get_secret_with_one_attr(PRIVATE_KEY_ATTR).await?;
-        Keypair::from_protobuf_encoding(&secret).ok().or_else(|| Some(Keypair::generate_ed25519()))
+        if let Some(secret) = self.get_secret_with_one_attr(PRIVATE_KEY_ATTR).await {
+            Keypair::from_protobuf_encoding(&secret).ok()
+        } else {
+            Some(Keypair::generate_ed25519())
+        }
     }
 
     pub async fn save_local_key(&self, keypair: &Keypair) -> Result<()> {
