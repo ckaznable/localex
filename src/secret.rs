@@ -1,34 +1,21 @@
 use std::collections::HashMap;
 
 use anyhow::Result;
-use libp2p::{identity::Keypair, PeerId};
-use rsa::{
-    pkcs1::{
-        DecodeRsaPrivateKey, DecodeRsaPublicKey, EncodeRsaPrivateKey, EncodeRsaPublicKey
-    },
-    RsaPrivateKey,
-    RsaPublicKey
-};
+use libp2p::identity::Keypair;
 use secret_service::{EncryptionType, SecretService};
 
 const SECRET_LABEL: &str = "LocalEx";
 const ATTR_KEY: &str = "localex";
 const PRIVATE_KEY_ATTR: (&str, &str) = (ATTR_KEY, "keypair");
-const SIGNATURE_PUB_ATTR: (&str, &str) = (ATTR_KEY, "signature_pub");
-const SIGNATURE_PRI_ATTR: (&str, &str) = (ATTR_KEY, "signature_pri");
-const REMOTE_PUBLIC_KEY_ATTR: (&str, &str) = (ATTR_KEY, "remote_pub_key");
-const REMOTE_PEER_FIELD: &str = "remote_peer";
 
 pub struct SecretStore<'a> {
     service: SecretService<'a>,
-    remote_peer_store: HashMap<PeerId, RsaPublicKey>,
 }
 
 impl<'a> SecretStore<'a> {
     pub async fn new() -> Result<Self> {
         Ok(Self {
             service: SecretService::connect(EncryptionType::Dh).await?,
-            remote_peer_store: HashMap::new(),
         })
     }
 
@@ -74,50 +61,5 @@ impl<'a> SecretStore<'a> {
     pub async fn save_local_key(&self, keypair: &Keypair) -> Result<()> {
         let key = keypair.to_protobuf_encoding()?;
         self.save_secret_with_one_attr(PRIVATE_KEY_ATTR, &key).await
-    }
-
-    pub async fn get_signed_keypair(&self) -> Option<(RsaPublicKey, RsaPrivateKey)> {
-        let pubkey = self.get_secret_with_one_attr(SIGNATURE_PUB_ATTR).await; 
-        let prikey = self.get_secret_with_one_attr(SIGNATURE_PRI_ATTR).await;
-
-        pubkey.zip(prikey)
-            .map(|(pubkey, prikey)| Ok((
-                RsaPublicKey::from_pkcs1_der(&pubkey)?,
-                RsaPrivateKey::from_pkcs1_der(&prikey)?,
-            )))
-            .unwrap_or_else(Self::gen_signed_keypair)
-            .ok()
-    }
-
-    pub async fn save_signed_keypair(&self, public_key: &RsaPublicKey, private_key: &RsaPrivateKey) -> Result<()> {
-        let pub_key = public_key.to_pkcs1_der()?;
-        let pri_key = private_key.to_pkcs1_der()?;
-        self.save_secret_with_one_attr(SIGNATURE_PUB_ATTR, pub_key.as_bytes()).await?;
-        self.save_secret_with_one_attr(SIGNATURE_PRI_ATTR, pri_key.as_bytes()).await?;
-        Ok(())
-    }
-
-    pub fn gen_signed_keypair() -> Result<(RsaPublicKey, RsaPrivateKey)> {
-        let mut rng = rand::thread_rng();
-        let bits = 2048;
-        let private_key = RsaPrivateKey::new(&mut rng, bits)?;
-        let public_key = private_key.to_public_key();
-        Ok((public_key, private_key))
-    }
-
-    pub async fn get_remote_public_key(&self, peer_id: &PeerId) -> Option<&RsaPublicKey> {
-        self.remote_peer_store.get(peer_id)
-    }
-
-    pub async fn save_remote_public_key(&mut self, peer_id: &PeerId, public_key: &RsaPublicKey) -> Result<()> {
-        if self.remote_peer_store.contains_key(peer_id) {
-            self.remote_peer_store.insert(*peer_id, public_key.clone());
-            self.save_secret(
-                HashMap::from([REMOTE_PUBLIC_KEY_ATTR, (REMOTE_PEER_FIELD, peer_id.to_string().as_str())]),
-               public_key.to_pkcs1_der()?.as_bytes()
-            ).await?;
-        }
-
-        Ok(())
     }
 }

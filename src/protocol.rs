@@ -11,9 +11,25 @@ pub enum PeerVerifyState {
     WaitingVerification(u8),
 }
 
+impl PeerVerifyState {
+    fn on_fail(state: &Self) -> Self {
+        match *state {
+            Self::WaitingVerification(count) => {
+                if count >= RETRY_LIMIT {
+                    Self::Blocked
+                } else {
+                    Self::WaitingVerification(count + 1)
+                }
+            },
+            s => s
+        }
+    }
+}
+
 pub struct RemotePeer {
     peer_id: PeerId,
     state: PeerVerifyState,
+    hostname: Option<String>,
 }
 
 impl RemotePeer {
@@ -23,20 +39,12 @@ impl RemotePeer {
         Self {
             peer_id,
             state,
+            hostname: None,
         }
     }
 
-    fn retry(&mut self) {
-        self.state = match self.state {
-            PeerVerifyState::WaitingVerification(c) => {
-                if c >= RETRY_LIMIT {
-                    PeerVerifyState::Blocked
-                } else {
-                    PeerVerifyState::WaitingVerification(c.saturating_add(1))
-                }
-            },
-            s => s
-        };
+    fn hostname(&mut self, hostname: String) {
+        self.hostname = Some(hostname);
     }
 }
 
@@ -45,7 +53,7 @@ pub struct LocalExProtocol {
 }
 
 impl LocalExProtocol {
-    pub fn new(local_peer_id: PeerId) -> Self {
+    pub fn new() -> Self {
         Self {
             peers: HashMap::new(),
         }
@@ -67,8 +75,16 @@ impl LocalExProtocol {
         self.peers.remove(peer_id);
     }
 
-    pub fn verify(&mut self, peer_id: &PeerId, topic: &str, password: &[u8]) -> bool {
-        todo!()
+    pub fn verify(&mut self, peer_id: &PeerId, on_verify: fn() -> bool) -> bool {
+        let Some(peer) = self.peers.get(peer_id) else {
+            return false;
+        };
+
+        if peer.state == PeerVerifyState::Blocked {
+            return false;
+        }
+
+        (on_verify)()
     }
 
     pub fn is_verified(&self, peer_id: &PeerId) -> Option<bool> {

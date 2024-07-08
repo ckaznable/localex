@@ -11,15 +11,12 @@ mod secret;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let mut localex = protocol::LocalExProtocol::new();
     let store = SecretStore::new().await?;
 
-    let (signed_public_key, signed_private_key) = store.get_signed_keypair().await.expect("can't get signed keypair");
     let local_keypair = store.get_local_key().await.expect("can't get libp2p keypair");
-    let local_peer_id = local_keypair.public().to_peer_id();
-    let mut localex = protocol::LocalExProtocol::new(local_peer_id);
 
     store.save_local_key(&local_keypair).await?;
-    store.save_signed_keypair(&signed_public_key, &signed_private_key).await?;
 
     let mut swarm = SwarmBuilder::with_existing_identity(local_keypair)
         .with_tokio()
@@ -32,7 +29,6 @@ async fn main() -> Result<()> {
         .build();
 
     swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
-
 
     loop {
         match swarm.select_next_some().await {

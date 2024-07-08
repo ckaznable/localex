@@ -12,7 +12,5 @@ anyhow = "1.0.86"
 secret-service = { version = "4.0.0", features = ["rt-tokio-crypto-rust"] }
 serde = { version = "1", features = ["derive"] }
 ciborium = "0.2.2"
-rsa = { version = "0.9.6", features = ["sha2"] }
-rand = "0.8.5"
 serde_repr = "0.1.19"
 hostname = "0.4.0"
