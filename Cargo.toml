@@ -14,3 +14,4 @@ serde = { version = "1", features = ["derive"] }
 ciborium = "0.2.2"
 serde_repr = "0.1.19"
 hostname = "0.4.0"
+ratatui = "0.27.0"
