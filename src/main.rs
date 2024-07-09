@@ -48,9 +48,8 @@ async fn handle_protocol(mut rx: tokio::sync::oneshot::Receiver<()>) -> Result<(
     loop {
         tokio::select! {
             _ = &mut rx => break,
-            event = swarm.select_next_some() => match event {
-                SwarmEvent::NewListenAddr { address, .. } => println!("Local node is listening on {address}"),
-                SwarmEvent::Behaviour(event) => match event {
+            swarm_event = swarm.select_next_some() => if let SwarmEvent::Behaviour(event) = swarm_event {
+                match event {
                     LocalExBehaviourEvent::RrAuth(request_response::Event::Message { peer, message: request_response::Message::Request { request, channel, .. }}) => {
                         let mut state = AuthResponseState::Deny;
                         if localex.handle_auth(peer).await {
@@ -75,20 +74,17 @@ async fn handle_protocol(mut rx: tokio::sync::oneshot::Receiver<()>) -> Result<(
                     }
                     LocalExBehaviourEvent::Mdns(mdns::Event::Discovered(list)) => {
                         for (peer_id, _) in list {
-                            println!("mDNS discovered a new peer: {peer_id}");
                             localex.add_peer(peer_id);
                         }
                     }
                     LocalExBehaviourEvent::Mdns(mdns::Event::Expired(list)) => {
                         for (peer_id, _) in list {
-                            println!("mDNS discover peer has expired: {peer_id}");
                             swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
                             localex.remove_peer(&peer_id);
                         }
                     }
                     _ => {}
-                },
-                _ => {}
+                }
             }
         }
     }
