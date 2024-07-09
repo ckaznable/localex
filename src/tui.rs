@@ -1,12 +1,15 @@
 use anyhow::Result;
-use ratatui::{
-    backend::CrosstermBackend, crossterm::{
-        self, cursor,
-        event::{self, DisableMouseCapture, Event, KeyCode, KeyEvent, KeyModifiers},
-        execute,
-        terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-    }, Frame, Terminal
+use crossterm::{
+    self, cursor,
+    event::{DisableMouseCapture, Event, KeyCode, KeyEvent, KeyModifiers},
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use futures::{FutureExt, StreamExt};
+use ratatui::{
+    backend::CrosstermBackend, Frame, Terminal
+};
+
 
 pub struct Tui {
     terminal: Terminal<CrosstermBackend<std::io::Stdout>>,
@@ -32,11 +35,16 @@ impl Tui {
     }
 
     pub async fn run(&mut self) -> Result<()> {
+        let mut reader = crossterm::event::EventStream::new();
+
         loop {
             self.terminal.draw(Self::ui)?;
 
-            if let Event::Key(KeyEvent { code, modifiers: KeyModifiers::NONE, .. }) = event::read()? {
-                self.handle_input(code);
+            let tui_event = reader.next().fuse();
+            tokio::select! {
+                event = tui_event => if let Some(Ok(Event::Key(KeyEvent { code, modifiers: KeyModifiers::NONE, .. }))) = event {
+                    self.handle_input(code);
+                },
             }
 
             if self.should_quit {
