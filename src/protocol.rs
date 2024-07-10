@@ -1,6 +1,22 @@
 use std::collections::HashMap;
 
-use libp2p::PeerId;
+use libp2p::{request_response::ResponseChannel, PeerId};
+
+use crate::behaviour::LocalExAuthResponse;
+
+#[derive(Clone)]
+pub enum ClientEvent {
+    RequestVerify(PeerId),
+    DisconnectPeer(PeerId),
+    VerifyConfirm(PeerId, bool),
+}
+
+#[derive(Clone)]
+pub enum DaemonEvent {
+    VerifyResult(PeerId, bool),
+    InCommingVerify(RemotePeer),
+    PeerList(Vec<RemotePeer>),
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub enum PeerVerifyState {
@@ -16,11 +32,11 @@ impl PeerVerifyState {
     }
 }
 
-#[derive(Clone)]
 pub struct RemotePeer {
     pub peer_id: PeerId,
     pub state: PeerVerifyState,
     pub hostname: Option<String>,
+    pub channel: Option<ResponseChannel<LocalExAuthResponse>>,
 }
 
 impl RemotePeer {
@@ -29,6 +45,28 @@ impl RemotePeer {
             peer_id,
             state: PeerVerifyState::default(),
             hostname: None,
+            channel: None,
+        }
+    }
+
+    pub fn set_channel(&mut self, channel: ResponseChannel<LocalExAuthResponse>) -> &mut Self {
+        self.channel = Some(channel);
+        self
+    }
+
+    pub fn set_hostname(&mut self, hostname: String) -> &mut Self {
+        self.hostname = Some(hostname);
+        self
+    }
+}
+
+impl Clone for RemotePeer {
+    fn clone(&self) -> Self {
+        Self {
+            peer_id: self.peer_id,
+            state: self.state,
+            hostname: self.hostname.clone(),
+            channel: None,
         }
     }
 }
@@ -56,26 +94,17 @@ impl LocalExProtocol {
         self.peers.remove(peer_id);
     }
 
-    pub async fn handle_auth(&mut self, peer_id: PeerId) -> bool {
-        let Some(peer) = self.peers.get(&peer_id) else {
-            return false;
-        };
-
-        if peer.state.should_skip_verify() {
-            return false;
-        }
-
-        self.verify(peer).await
+    pub fn get_peer_mut(&mut self, peer_id: &PeerId) -> Option<&mut RemotePeer> {
+        self.peers.get_mut(peer_id)
     }
 
-    pub async fn verify(&self, _: &RemotePeer) -> bool {
-        true
-    }
-
-    pub fn verified(&mut self, peer_id: &PeerId, hostname: String) {
+    pub fn verified(&mut self, peer_id: &PeerId) {
         if let Some(peer) = self.peers.get_mut(peer_id) {
             peer.state = PeerVerifyState::Verified;
-            peer.hostname = Some(hostname);
         }
+    }
+
+    pub fn get_all_peers(&self) -> Vec<RemotePeer> {
+        self.peers.values().cloned().collect()
     }
 }
