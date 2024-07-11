@@ -7,7 +7,11 @@ use crossterm::{
 };
 use futures::{FutureExt, StreamExt};
 use ratatui::{
-    backend::CrosstermBackend, layout::{Alignment, Constraint, Layout, Rect}, style::{Modifier, Style}, widgets::{Block, List, ListItem, ListState}, Frame, Terminal
+    backend::CrosstermBackend,
+    layout::{Alignment, Constraint, Layout, Rect},
+    style::{Modifier, Style},
+    widgets::{Block, List, ListItem, ListState},
+    Frame, Terminal,
 };
 use tokio::sync::mpsc;
 
@@ -42,7 +46,11 @@ pub struct Tui {
 }
 
 impl Tui {
-    pub fn new(quit_tx: tokio::sync::oneshot::Sender<()>, client_tx: mpsc::Sender<ClientEvent>, daemon_rx: mpsc::Receiver<DaemonEvent>) -> Result<Self> {
+    pub fn new(
+        quit_tx: tokio::sync::oneshot::Sender<()>,
+        client_tx: mpsc::Sender<ClientEvent>,
+        daemon_rx: mpsc::Receiver<DaemonEvent>,
+    ) -> Result<Self> {
         // setup terminal
         enable_raw_mode()?;
         let mut stdout = std::io::stdout();
@@ -102,7 +110,9 @@ impl Tui {
                 }
             }
             DaemonEvent::InCommingVerify(peer) => {
-                self.state.ui_state = self.state.peers
+                self.state.ui_state = self
+                    .state
+                    .peers
                     .iter()
                     .find(|p| p.id() == peer.peer_id)
                     .map(|p| TuiUiState::InCommingVerify(p.clone()))
@@ -119,21 +129,37 @@ impl Tui {
             KeyCode::Char('q') | KeyCode::Char('Q') => self.quit(),
             KeyCode::Char('j') => self.state.list_state.select_next(),
             KeyCode::Char('k') => self.state.list_state.select_previous(),
-            KeyCode::Enter => if let Some(index) = self.state.list_state.selected() {
-                if let Some(peer) = self.state.peers.get(index) {
-                    self.client_tx.send(ClientEvent::RequestVerify(peer.id())).await;
+            KeyCode::Enter => {
+                if let Some(index) = self.state.list_state.selected() {
+                    if let Some(peer) = self.state.peers.get(index) {
+                        self.client_tx
+                            .send(ClientEvent::RequestVerify(peer.id()))
+                            .await;
+                    }
                 }
             }
-            KeyCode::Char('d') => if let Some(index) = self.state.list_state.selected() {
-                if let Some(peer) = self.state.peers.get(index) {
-                    self.client_tx.send(ClientEvent::DisconnectPeer(peer.id())).await;
+            KeyCode::Char('d') => {
+                if let Some(index) = self.state.list_state.selected() {
+                    if let Some(peer) = self.state.peers.get(index) {
+                        self.client_tx
+                            .send(ClientEvent::DisconnectPeer(peer.id()))
+                            .await;
+                    }
                 }
             }
-            KeyCode::Char('y') | KeyCode::Char('Y') => if let TuiUiState::InCommingVerify(p) = &self.state.ui_state {
-                self.client_tx.send(ClientEvent::VerifyConfirm(p.id(), true)).await;
+            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                if let TuiUiState::InCommingVerify(p) = &self.state.ui_state {
+                    self.client_tx
+                        .send(ClientEvent::VerifyConfirm(p.id(), true))
+                        .await;
+                }
             }
-            KeyCode::Char('n') | KeyCode::Char('N') => if let TuiUiState::InCommingVerify(p) = &self.state.ui_state {
-                self.client_tx.send(ClientEvent::VerifyConfirm(p.id(), false)).await;
+            KeyCode::Char('n') | KeyCode::Char('N') => {
+                if let TuiUiState::InCommingVerify(p) = &self.state.ui_state {
+                    self.client_tx
+                        .send(ClientEvent::VerifyConfirm(p.id(), false))
+                        .await;
+                }
             }
             _ => {}
         }
@@ -141,20 +167,21 @@ impl Tui {
 
     fn ui(f: &mut Frame, state: &mut TuiState) {
         let area = f.size();
-        let items: Vec<ListItem> = state.peers
-            .iter()
-            .map(ListItem::from)
-            .collect();
+        let items: Vec<ListItem> = state.peers.iter().map(ListItem::from).collect();
 
         let list = List::new(items)
-            .block(Block::bordered().title("Localex Agent").title_alignment(Alignment::Center))
+            .block(
+                Block::bordered()
+                    .title("Localex Agent")
+                    .title_alignment(Alignment::Center),
+            )
             .highlight_style(Style::new().add_modifier(Modifier::REVERSED))
             .highlight_symbol(">")
             .repeat_highlight_symbol(true);
 
         f.render_stateful_widget(list, area, &mut state.list_state);
 
-        if let TuiUiState::InCommingVerify(peer) = &state.ui_state  {
+        if let TuiUiState::InCommingVerify(peer) = &state.ui_state {
             let carea = Self::centered_rect(100, 5, area);
             f.render_widget(InCommingVerify(peer), carea);
         }
