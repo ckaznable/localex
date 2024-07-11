@@ -15,3 +15,9 @@ serde_repr = "0.1.19"
 hostname = "0.4.0"
 ratatui = "0.27.0"
 crossterm = { version = "0.27.0", features = ["serde", "event-stream"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = 'abort'
