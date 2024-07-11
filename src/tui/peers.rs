@@ -7,6 +7,7 @@ use ratatui::{
 
 use crate::protocol::{PeerVerifyState, RemotePeer};
 
+#[derive(Clone)]
 pub struct Peer(pub RemotePeer);
 
 impl Peer {

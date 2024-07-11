@@ -7,19 +7,28 @@ use crossterm::{
 };
 use futures::{FutureExt, StreamExt};
 use ratatui::{
-    backend::CrosstermBackend, layout::Alignment, style::{Modifier, Style}, widgets::{Block, List, ListItem, ListState}, Frame, Terminal
+    backend::CrosstermBackend, layout::{Alignment, Constraint, Layout, Rect}, style::{Modifier, Style}, widgets::{Block, List, ListItem, ListState}, Frame, Terminal
 };
 use tokio::sync::mpsc;
 
-use crate::protocol::{ClientEvent, DaemonEvent};
+use crate::protocol::{ClientEvent, DaemonEvent, PeerVerifyState};
 
-use self::peers::Peer;
+use self::{incomming_verify::InCommingVerify, peers::Peer};
 
+mod incomming_verify;
 mod peers;
+
+#[derive(Default)]
+enum TuiUiState {
+    InCommingVerify(Peer),
+    #[default]
+    List,
+}
 
 #[derive(Default)]
 pub struct TuiState {
     list_state: ListState,
+    ui_state: TuiUiState,
     peers: Vec<Peer>,
 }
 
@@ -83,9 +92,25 @@ impl Tui {
 
     async fn handle_daemon(&mut self, event: DaemonEvent) {
         match event {
-            DaemonEvent::VerifyResult(_, _) => todo!(),
-            DaemonEvent::InCommingVerify(_) => todo!(),
-            DaemonEvent::PeerList(_) => todo!(),
+            DaemonEvent::VerifyResult(peer_id, result) => {
+                if let Some(p) = self.state.peers.iter_mut().find(|p| p.id() == peer_id) {
+                    p.0.state = if result {
+                        PeerVerifyState::Verified
+                    } else {
+                        PeerVerifyState::Blocked
+                    };
+                }
+            }
+            DaemonEvent::InCommingVerify(peer) => {
+                self.state.ui_state = self.state.peers
+                    .iter()
+                    .find(|p| p.id() == peer.peer_id)
+                    .map(|p| TuiUiState::InCommingVerify(p.clone()))
+                    .unwrap_or_else(|| TuiUiState::InCommingVerify(Peer(peer)));
+            }
+            DaemonEvent::PeerList(peers) => {
+                self.state.peers = peers.into_iter().map(Peer).collect();
+            }
         }
     }
 
@@ -94,20 +119,28 @@ impl Tui {
             KeyCode::Char('q') | KeyCode::Char('Q') => self.quit(),
             KeyCode::Char('j') => self.state.list_state.select_next(),
             KeyCode::Char('k') => self.state.list_state.select_previous(),
-            KeyCode::Enter => {
-                let Some(index) = self.state.list_state.selected() else {
-                    return;
-                };
-
+            KeyCode::Enter => if let Some(index) = self.state.list_state.selected() {
                 if let Some(peer) = self.state.peers.get(index) {
                     self.client_tx.send(ClientEvent::RequestVerify(peer.id())).await;
                 }
+            }
+            KeyCode::Char('d') => if let Some(index) = self.state.list_state.selected() {
+                if let Some(peer) = self.state.peers.get(index) {
+                    self.client_tx.send(ClientEvent::DisconnectPeer(peer.id())).await;
+                }
+            }
+            KeyCode::Char('y') | KeyCode::Char('Y') => if let TuiUiState::InCommingVerify(p) = &self.state.ui_state {
+                self.client_tx.send(ClientEvent::VerifyConfirm(p.id(), true)).await;
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') => if let TuiUiState::InCommingVerify(p) = &self.state.ui_state {
+                self.client_tx.send(ClientEvent::VerifyConfirm(p.id(), false)).await;
             }
             _ => {}
         }
     }
 
     fn ui(f: &mut Frame, state: &mut TuiState) {
+        let area = f.size();
         let items: Vec<ListItem> = state.peers
             .iter()
             .map(ListItem::from)
@@ -119,7 +152,24 @@ impl Tui {
             .highlight_symbol(">")
             .repeat_highlight_symbol(true);
 
-        f.render_stateful_widget(list, f.size(), &mut state.list_state);
+        f.render_stateful_widget(list, area, &mut state.list_state);
+
+        if let TuiUiState::InCommingVerify(peer) = &state.ui_state  {
+            let carea = Self::centered_rect(100, 5, area);
+            f.render_widget(InCommingVerify(peer), carea);
+        }
+    }
+
+    fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+        let padding = (100 - percent_y) / 2;
+        let [v_center] =
+            Layout::vertical(Constraint::from_percentages([padding, percent_y, padding])).areas(r);
+
+        let padding = (100 - percent_x) / 2;
+        let [_, center, _] =
+            Layout::horizontal(Constraint::from_percentages([padding, percent_x, padding]))
+                .areas(v_center);
+        center
     }
 }
 
