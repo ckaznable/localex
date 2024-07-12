@@ -16,6 +16,7 @@ use crate::behaviour::LocalExAuthRequest;
 
 mod behaviour;
 mod cli;
+mod logger;
 mod protocol;
 mod secret;
 mod tui;
@@ -27,10 +28,12 @@ async fn main() -> Result<()> {
     let (client_tx, client_rx) = mpsc::channel(64);
     let (quit_tx, quit_rx) = oneshot::channel::<()>();
 
-    let mut tui = Tui::new(quit_tx, client_tx, daemon_rx)?;
     let handle = tokio::spawn(async move { handle_daemon(param, quit_rx, daemon_tx, client_rx).await });
+    if param.tui {
+        let mut tui = Tui::new(quit_tx, client_tx, daemon_rx)?;
+        tui.run().await?;
+    }
 
-    tui.run().await?;
     handle.await?
 }
 
@@ -50,6 +53,9 @@ async fn handle_daemon(param: cli::Cli, mut quit_rx: tokio::sync::oneshot::Recei
     if !param.no_save {
         store.save_local_key(&local_keypair).await?;
     }
+
+    let log_filename = format!("localex-{}.log", local_keypair.public().to_peer_id());
+    logger::init_logger(log_filename, param.tui);
 
     let mut swarm = SwarmBuilder::with_existing_identity(local_keypair)
         .with_tokio()

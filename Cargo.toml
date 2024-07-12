@@ -16,6 +16,10 @@ hostname = "0.4.0"
 ratatui = "0.27.0"
 crossterm = { version = "0.27.0", features = ["serde", "event-stream"] }
 clap = { version = "4.5.9", features = ["derive"] }
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+tracing-appender = "0.2.3"
+dirs = "5.0.1"
 
 [profile.release]
 opt-level = "z"

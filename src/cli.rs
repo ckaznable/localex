@@ -5,6 +5,10 @@ use clap::Parser;
 pub struct Cli {
     #[arg(long)]
     pub new_profile: bool,
+
     #[arg(long)]
     pub no_save: bool,
+
+    #[arg(long, short)]
+    pub tui: bool,
 }
