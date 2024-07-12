@@ -67,10 +67,12 @@ async fn handle_daemon(param: cli::Cli, mut quit_rx: tokio::sync::oneshot::Recei
             libp2p::noise::Config::new,
             libp2p::yamux::Config::default,
         )?
+        .with_quic()
         .with_behaviour(LocalExBehaviour::new)?
-        .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(Duration::from_secs(u64::MAX)))
+        .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(Duration::from_secs(30)))
         .build();
 
+    swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
     swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
     let local_hostname = hostname::get()
         .map(|s| s.to_string_lossy().to_string())
