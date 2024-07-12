@@ -1,5 +1,7 @@
 #![allow(unused_must_use)]
 
+use std::time::Duration;
+
 use anyhow::Result;
 use behaviour::{AuthResponseState, LocalExAuthResponse, LocalExBehaviour, LocalExBehaviourEvent};
 use clap::Parser;
@@ -10,6 +12,7 @@ use libp2p::{gossipsub, mdns, request_response, SwarmBuilder};
 use protocol::{ClientEvent, DaemonEvent};
 use secret::SecretStore;
 use tokio::sync::{mpsc, oneshot};
+use tracing::{info, error};
 use tui::Tui;
 
 use crate::behaviour::LocalExAuthRequest;
@@ -65,6 +68,7 @@ async fn handle_daemon(param: cli::Cli, mut quit_rx: tokio::sync::oneshot::Recei
             libp2p::yamux::Config::default,
         )?
         .with_behaviour(LocalExBehaviour::new)?
+        .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(Duration::from_secs(u64::MAX)))
         .build();
 
     swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
@@ -97,6 +101,7 @@ async fn handle_daemon(param: cli::Cli, mut quit_rx: tokio::sync::oneshot::Recei
                         localex.remove_peer(&peer_id);
                     }
                     ClientEvent::RequestVerify(peer_id) => {
+                        info!("send verification request to {}", peer_id);
                         swarm.behaviour_mut().rr_auth.send_request(&peer_id, LocalExAuthRequest {
                             hostname: local_hostname.to_owned(),
                         });
@@ -105,7 +110,14 @@ async fn handle_daemon(param: cli::Cli, mut quit_rx: tokio::sync::oneshot::Recei
             },
             swarm_event = swarm.select_next_some() => if let SwarmEvent::Behaviour(event) = swarm_event {
                 match event {
+                    LocalExBehaviourEvent::RrAuth(request_response::Event::InboundFailure { error, .. }) => {
+                        error!("inbound failure: {error}");
+                    }
+                    LocalExBehaviourEvent::RrAuth(request_response::Event::OutboundFailure { error, .. }) => {
+                        error!("outbound failure: {error}");
+                    }
                     LocalExBehaviourEvent::RrAuth(request_response::Event::Message { peer, message: request_response::Message::Request { request, channel, .. }}) => {
+                        info!("{} verfication request incomming", peer);
                         localex.add_peer(peer);
 
                         let peer = localex.get_peer_mut(&peer).unwrap();
@@ -116,6 +128,8 @@ async fn handle_daemon(param: cli::Cli, mut quit_rx: tokio::sync::oneshot::Recei
                     }
                     LocalExBehaviourEvent::RrAuth(request_response::Event::Message { peer, message: request_response::Message::Response { response, .. }}) => {
                         let result = response.state == AuthResponseState::Accept;
+                        info!("{} verify result is {}", peer, result);
+
                         if result {
                             localex.verified(&peer);
                             swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer);

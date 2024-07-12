@@ -14,6 +14,7 @@ use ratatui::{
     Frame, Terminal,
 };
 use tokio::sync::mpsc;
+use tracing::info;
 
 use crate::protocol::{ClientEvent, DaemonEvent, PeerVerifyState};
 
@@ -121,6 +122,9 @@ impl Tui {
             }
             DaemonEvent::PeerList(peers) => {
                 self.state.peers = peers.into_iter().map(Peer).collect();
+                if self.state.list_state.selected().is_none() && !self.state.peers.is_empty() {
+                    self.state.list_state.select(Some(0))
+                }
             }
         }
     }
@@ -133,6 +137,7 @@ impl Tui {
             KeyCode::Enter => {
                 if let Some(index) = self.state.list_state.selected() {
                     if let Some(peer) = self.state.peers.get(index) {
+                        info!("request verication to remote peer {}", peer.id());
                         self.client_tx
                             .send(ClientEvent::RequestVerify(peer.id()))
                             .await;
