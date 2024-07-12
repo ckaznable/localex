@@ -82,6 +82,7 @@ impl LocalExProtocol {
         }
     }
 
+    #[inline]
     pub fn add_peer(&mut self, peer_id: PeerId) {
         if self.peers.contains_key(&peer_id) {
             return;
@@ -90,20 +91,24 @@ impl LocalExProtocol {
         self.peers.insert(peer_id, RemotePeer::new(peer_id));
     }
 
+    #[inline]
     pub fn remove_peer(&mut self, peer_id: &PeerId) {
         self.peers.remove(peer_id);
     }
 
+    #[inline]
     pub fn get_peer_mut(&mut self, peer_id: &PeerId) -> Option<&mut RemotePeer> {
         self.peers.get_mut(peer_id)
     }
 
+    #[inline]
     pub fn verified(&mut self, peer_id: &PeerId) {
         if let Some(peer) = self.peers.get_mut(peer_id) {
             peer.state = PeerVerifyState::Verified;
         }
     }
 
+    #[inline]
     pub fn get_all_peers(&self) -> Vec<RemotePeer> {
         self.peers.values().cloned().collect()
     }

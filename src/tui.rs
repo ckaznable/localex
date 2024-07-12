@@ -94,6 +94,7 @@ impl Tui {
         Ok(())
     }
 
+    #[inline]
     pub fn quit(&mut self) {
         self.should_quit = true;
     }

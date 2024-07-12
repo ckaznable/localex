@@ -45,20 +45,24 @@ impl<'a> SecretStore<'a> {
         Ok(())
     }
 
+    #[inline]
     async fn get_secret_with_one_attr(&self, attr: (&str, &str)) -> Option<Vec<u8>> {
         self.get_secret(HashMap::from([attr])).await
     }
 
+    #[inline]
     async fn save_secret_with_one_attr(&self, attr: (&str, &str), secret: &[u8]) -> Result<()> {
         self.save_secret(HashMap::from([attr]), secret).await
     }
 
+    #[inline]
     pub async fn get_local_key(&self) -> Option<Keypair> {
         self.get_secret_with_one_attr(PRIVATE_KEY_ATTR).await
             .and_then(|secret| Keypair::from_protobuf_encoding(&secret).ok())
             .or_else(|| Some(Keypair::generate_ed25519()))
     }
 
+    #[inline]
     pub async fn save_local_key(&self, keypair: &Keypair) -> Result<()> {
         let key = keypair.to_protobuf_encoding()?;
         self.save_secret_with_one_attr(PRIVATE_KEY_ATTR, &key).await
