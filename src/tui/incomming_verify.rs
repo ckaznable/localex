@@ -22,7 +22,7 @@ impl<'a> Widget for InCommingVerify<'a> {
             .unwrap_or_else(|| String::from("unknown"));
         let text = format!("{}:({})", hostname, peer.0.peer_id);
 
-        let block = Block::bordered().style(Style::default().bg(Color::Gray));
+        let block = Block::bordered().style(Style::default());
         let lines = vec![
             Line::from(vec![Span::raw(text)]).centered(),
             Line::default(),
