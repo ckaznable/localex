@@ -159,6 +159,8 @@ impl Tui {
                         .send(ClientEvent::VerifyConfirm(p.id(), true))
                         .await;
                 }
+
+                self.state.ui_state = TuiUiState::List;
             }
             KeyCode::Char('n') | KeyCode::Char('N') => {
                 if let TuiUiState::InCommingVerify(p) = &self.state.ui_state {
@@ -166,6 +168,8 @@ impl Tui {
                         .send(ClientEvent::VerifyConfirm(p.id(), false))
                         .await;
                 }
+
+                self.state.ui_state = TuiUiState::List;
             }
             _ => {}
         }
@@ -188,19 +192,19 @@ impl Tui {
         f.render_stateful_widget(list, area, &mut state.list_state);
 
         if let TuiUiState::InCommingVerify(peer) = &state.ui_state {
-            let carea = Self::centered_rect(100, 5, area);
+            let carea = Self::centered_rect(50, 5, area);
             f.render_widget(InCommingVerify(peer), carea);
         }
     }
 
-    fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-        let padding = (100 - percent_y) / 2;
-        let [v_center] =
-            Layout::vertical(Constraint::from_percentages([padding, percent_y, padding])).areas(r);
+    fn centered_rect(width: u16, height: u16, r: Rect) -> Rect {
+        let padding = (r.height - height) / 2;
+        let [_, v_center] =
+            Layout::vertical(Constraint::from_lengths([padding, height])).areas(r);
 
-        let padding = (100 - percent_x) / 2;
-        let [_, center, _] =
-            Layout::horizontal(Constraint::from_percentages([padding, percent_x, padding]))
+        let padding = (r.width - width) / 2;
+        let [_, center] =
+            Layout::horizontal(Constraint::from_lengths([padding, width]))
                 .areas(v_center);
         center
     }
