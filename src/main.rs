@@ -2,7 +2,9 @@
 
 use anyhow::Result;
 use behaviour::{AuthResponseState, LocalExAuthResponse, LocalExBehaviour, LocalExBehaviourEvent};
+use clap::Parser;
 use futures::StreamExt;
+use libp2p::identity::Keypair;
 use libp2p::swarm::SwarmEvent;
 use libp2p::{gossipsub, mdns, request_response, SwarmBuilder};
 use protocol::{ClientEvent, DaemonEvent};
@@ -13,33 +15,41 @@ use tui::Tui;
 use crate::behaviour::LocalExAuthRequest;
 
 mod behaviour;
+mod cli;
 mod protocol;
 mod secret;
 mod tui;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let param = cli::Cli::parse();
     let (daemon_tx, daemon_rx) = mpsc::channel(64);
     let (client_tx, client_rx) = mpsc::channel(64);
     let (quit_tx, quit_rx) = oneshot::channel::<()>();
 
     let mut tui = Tui::new(quit_tx, client_tx, daemon_rx)?;
-    let handle = tokio::spawn(async move { handle_daemon(quit_rx, daemon_tx, client_rx).await });
+    let handle = tokio::spawn(async move { handle_daemon(param, quit_rx, daemon_tx, client_rx).await });
 
     tui.run().await?;
-    handle.await??;
-    Ok(())
+    handle.await?
 }
 
-async fn handle_daemon(mut quit_rx: tokio::sync::oneshot::Receiver<()>, daemon_tx: mpsc::Sender<DaemonEvent>, mut client_rx: mpsc::Receiver<ClientEvent>) -> Result<()> {
+async fn handle_daemon(param: cli::Cli, mut quit_rx: tokio::sync::oneshot::Receiver<()>, daemon_tx: mpsc::Sender<DaemonEvent>, mut client_rx: mpsc::Receiver<ClientEvent>) -> Result<()> {
     let mut localex = protocol::LocalExProtocol::new();
     let store = SecretStore::new().await?;
 
-    let local_keypair = store
-        .get_local_key()
-        .await
-        .expect("can't get libp2p keypair");
-    store.save_local_key(&local_keypair).await?;
+    let local_keypair = if param.new_profile {
+        Keypair::generate_ed25519()
+    } else {
+        store
+            .get_local_key()
+            .await
+            .expect("can't get libp2p keypair")
+    };
+
+    if !param.no_save {
+        store.save_local_key(&local_keypair).await?;
+    }
 
     let mut swarm = SwarmBuilder::with_existing_identity(local_keypair)
         .with_tokio()
