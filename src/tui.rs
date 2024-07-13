@@ -196,7 +196,7 @@ impl Tui {
         f.render_stateful_widget(list, area, &mut state.list_state);
 
         if let TuiUiState::InCommingVerify(peer) = &state.ui_state {
-            let carea = Self::centered_rect(50, 5, area);
+            let carea = Self::centered_rect(100, 5, area);
             f.render_widget(InCommingVerify(peer), carea);
         }
     }
