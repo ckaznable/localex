@@ -11,6 +11,7 @@ use crate::protocol::{PeerVerifyState, RemotePeer};
 pub struct Peer(pub RemotePeer);
 
 impl Peer {
+    #[inline]
     pub fn id(&self) -> PeerId {
         self.0.peer_id
     }

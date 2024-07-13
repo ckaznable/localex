@@ -158,6 +158,10 @@ impl Tui {
                     self.client_tx
                         .send(ClientEvent::VerifyConfirm(p.id(), true))
                         .await;
+
+                    if let Some(peer) = self.state.peers.iter_mut().find(|_p| p.id() == _p.id()) {
+                        peer.0.state = PeerVerifyState::Verified;
+                    }
                 }
 
                 self.state.ui_state = TuiUiState::List;
