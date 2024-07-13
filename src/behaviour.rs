@@ -1,5 +1,4 @@
 use std::{
-    hash::{DefaultHasher, Hash, Hasher},
     io,
     time::Duration,
 };
@@ -58,16 +57,9 @@ impl LocalExBehaviour {
     }
 
     fn create_gossipsub_behavior(id_keys: Keypair) -> gossipsub::Behaviour {
-        // let message_id_fn = |message: &gossipsub::Message| {
-        //     let mut s = DefaultHasher::new();
-        //     message.data.hash(&mut s);
-        //     gossipsub::MessageId::from(s.finish().to_string())
-        // };
-
         let gossipsub_config = gossipsub::ConfigBuilder::default()
             .heartbeat_interval(Duration::from_secs(60))
             .validation_mode(gossipsub::ValidationMode::Strict)
-            // .message_id_fn(message_id_fn)
             .duplicate_cache_time(Duration::from_secs(5))
             .build()
             .map_err(|msg| io::Error::new(io::ErrorKind::Other, msg))
