@@ -12,7 +12,7 @@ use libp2p::{gossipsub, mdns, request_response, SwarmBuilder};
 use protocol::{ClientEvent, DaemonEvent};
 use secret::SecretStore;
 use tokio::sync::{mpsc, oneshot};
-use tracing::{info, error};
+use tracing::{error, info};
 use tui::Tui;
 
 use crate::behaviour::LocalExAuthRequest;
@@ -32,7 +32,9 @@ async fn main() -> Result<()> {
     let (quit_tx, quit_rx) = oneshot::channel::<()>();
 
     let _param = param.clone();
-    let handle = tokio::spawn(async move { handle_daemon(_param, quit_rx, daemon_tx, client_rx).await });
+    let handle = tokio::spawn(async move {
+        handle_daemon(_param, quit_rx, daemon_tx, client_rx).await
+    });
 
     if param.tui {
         let mut tui = Tui::new(quit_tx, client_tx, daemon_rx)?;
@@ -42,7 +44,12 @@ async fn main() -> Result<()> {
     handle.await?
 }
 
-async fn handle_daemon(mut param: cli::Cli, mut quit_rx: tokio::sync::oneshot::Receiver<()>, daemon_tx: mpsc::Sender<DaemonEvent>, mut client_rx: mpsc::Receiver<ClientEvent>) -> Result<()> {
+async fn handle_daemon(
+    mut param: cli::Cli,
+    mut quit_rx: tokio::sync::oneshot::Receiver<()>,
+    daemon_tx: mpsc::Sender<DaemonEvent>,
+    mut client_rx: mpsc::Receiver<ClientEvent>,
+) -> Result<()> {
     let mut localex = protocol::LocalExProtocol::new();
     let store = SecretStore::new().await?;
 
@@ -59,7 +66,11 @@ async fn handle_daemon(mut param: cli::Cli, mut quit_rx: tokio::sync::oneshot::R
         store.save_local_key(&local_keypair).await?;
     }
 
-    let log_filename = format!("{}.log", param.log_file_name.take().unwrap_or_else(|| local_keypair.public().to_peer_id().to_string()));
+    let log_filename = param
+        .log_file_name
+        .take()
+        .unwrap_or_else(|| local_keypair.public().to_peer_id().to_string());
+    let log_filename = format!("{}.log", log_filename);
     logger::init_logger(log_filename, param.tui);
 
     let mut swarm = SwarmBuilder::with_existing_identity(local_keypair)
