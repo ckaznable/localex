@@ -19,7 +19,7 @@ impl Peer {
 
 impl<'a> From<&Peer> for ListItem<'a> {
     fn from(peer: &Peer) -> Self {
-        let hostname = Span::raw(peer.0.hostname .clone().unwrap_or_else(|| String::from("unknown:")));
+        let hostname = Span::raw(peer.0.hostname.clone().unwrap_or_else(|| String::from("unknown")) + ":");
         let id = Span::raw(peer.0.peer_id.to_string());
         let state = match peer.0.state {
             PeerVerifyState::Verified => Span::styled("(verified) ", Style::default().fg(Color::Green)),
