@@ -8,9 +8,11 @@ use tracing_subscriber::{
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 
 pub fn init_logger<T: AsRef<str>>(filename: T, use_tui: bool) -> Result<()> {
+    let mut log_dir = dirs::cache_dir().unwrap();
+    log_dir.push("localex");
     let file_appender = RollingFileAppender::new(
         Rotation::NEVER,
-        dirs::cache_dir().unwrap(),
+        log_dir,
         filename.as_ref(),
     );
 
