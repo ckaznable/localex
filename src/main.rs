@@ -91,9 +91,21 @@ async fn handle_daemon(
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|_| String::from("unknown"));
 
+    let hostname_topic = gossipsub::IdentTopic::new("hostname-broadcaset");
+    swarm.behaviour_mut().gossipsub.subscribe(&hostname_topic)?;
+    let mut hostname_broadcast_interval = tokio::time::interval(Duration::from_secs(60));
+
     loop {
+        let hostname_broadcast_tick = hostname_broadcast_interval.tick();
+
         tokio::select! {
             _ = &mut quit_rx => break,
+            _ = hostname_broadcast_tick => {
+                info!("broadcast hostname to peers");
+                if let Err(e) = swarm.behaviour_mut().gossipsub.publish(hostname_topic.clone(), local_hostname.clone()) {
+                    error!("hostname publish error: {e:?}");
+                }
+            },
             client_event = client_rx.recv() => if let Some(event) = client_event {
                 match event {
                     ClientEvent::VerifyConfirm(peer_id, result) => {
@@ -132,7 +144,7 @@ async fn handle_daemon(
                         error!("outbound failure: {error}");
                     }
                     LocalExBehaviourEvent::RrAuth(request_response::Event::Message { peer, message: request_response::Message::Request { request, channel, .. }}) => {
-                        info!("{} verfication request incomming", peer);
+                        info!("{}:{} verfication request incomming", &request.hostname, peer);
                         localex.add_peer(peer);
 
                         let peer = localex.get_peer_mut(&peer).unwrap();
@@ -140,24 +152,27 @@ async fn handle_daemon(
                             .set_channel(channel);
 
                         daemon_tx.send(DaemonEvent::InCommingVerify(peer.clone())).await;
+                        daemon_tx.send(DaemonEvent::PeerList(localex.get_all_peers())).await;
                     }
                     LocalExBehaviourEvent::RrAuth(request_response::Event::Message { peer, message: request_response::Message::Response { response, .. }}) => {
                         let result = response.state == AuthResponseState::Accept;
-                        info!("{} verify result is {}", peer, result);
+                        info!("{}:{} verify result is {}", &response.hostname, peer, result);
 
                         if result {
                             localex.verified(&peer);
                             swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer);
                         }
 
+                        let p = localex.get_peer_mut(&peer).unwrap();
+                        p.set_hostname(response.hostname);
+
                         daemon_tx.send(DaemonEvent::VerifyResult(peer, result)).await;
-                    }
-                    LocalExBehaviourEvent::Gossipsub(gossipsub::Event::GossipsubNotSupported { peer_id }) => {
-                        localex.remove_peer(&peer_id);
+                        daemon_tx.send(DaemonEvent::PeerList(localex.get_all_peers())).await;
                     }
                     LocalExBehaviourEvent::Mdns(mdns::Event::Discovered(list)) => {
                         for (peer_id, _) in list {
                             localex.add_peer(peer_id);
+                            swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
                         }
 
                         daemon_tx.send(DaemonEvent::PeerList(localex.get_all_peers())).await;
@@ -169,6 +184,32 @@ async fn handle_daemon(
                         }
 
                         daemon_tx.send(DaemonEvent::PeerList(localex.get_all_peers())).await;
+                    }
+                    LocalExBehaviourEvent::Gossipsub(gossipsub::Event::Subscribed { topic, peer_id }) => {
+                        if topic == hostname_topic.hash() {
+                            info!("{} just subscribed hostname topic", peer_id.to_string());
+                            if let Err(e) = swarm.behaviour_mut().gossipsub.publish(hostname_topic.clone(), local_hostname.clone()) {
+                                error!("hostname publish error: {e:?}");
+                            }
+                        }
+                    }
+                    LocalExBehaviourEvent::Gossipsub(gossipsub::Event::Message { message, .. }) => {
+                        if let Some(peer) = message.source.and_then(|peer| localex.get_peer_mut(&peer)) {
+                            let hostname = String::from_utf8(message.data).unwrap_or_else(|_| String::from("unknown"));
+                            info!("receive hostname broadcaset {hostname}");
+                            peer.set_hostname(hostname);
+                        }
+
+                        daemon_tx.send(DaemonEvent::PeerList(localex.get_all_peers())).await;
+                    }
+                    LocalExBehaviourEvent::Gossipsub(gossipsub::Event::GossipsubNotSupported { peer_id }) => {
+                        info!("{} not support gossipsub", peer_id);
+                        swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
+                        localex.remove_peer(&peer_id);
+                        daemon_tx.send(DaemonEvent::PeerList(localex.get_all_peers())).await;
+                    }
+                    LocalExBehaviourEvent::Gossipsub(gossipsub::Event::Unsubscribed { peer_id, .. }) => {
+                        info!("{} unsubscribe topic", peer_id);
                     }
                     _ => {}
                 }
