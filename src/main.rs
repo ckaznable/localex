@@ -95,6 +95,8 @@ async fn handle_daemon(
     swarm.behaviour_mut().gossipsub.subscribe(&hostname_topic)?;
     let mut hostname_broadcast_interval = tokio::time::interval(Duration::from_secs(60));
 
+    daemon_tx.send(DaemonEvent::LocalInfo(local_hostname.clone(), *swarm.local_peer_id())).await;
+
     loop {
         let hostname_broadcast_tick = hostname_broadcast_interval.tick();
 

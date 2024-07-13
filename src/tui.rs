@@ -6,12 +6,9 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use futures::{FutureExt, StreamExt};
+use libp2p::PeerId;
 use ratatui::{
-    backend::CrosstermBackend,
-    layout::{Alignment, Constraint, Layout, Rect},
-    style::{Modifier, Style},
-    widgets::{Block, List, ListItem, ListState},
-    Frame, Terminal,
+    backend::CrosstermBackend, layout::{Alignment, Constraint, Layout, Rect}, style::{Modifier, Style}, text::{Line, Span}, widgets::{Block, List, ListItem, ListState, Paragraph}, Frame, Terminal
 };
 use tokio::sync::mpsc;
 use tracing::info;
@@ -35,6 +32,8 @@ pub struct TuiState {
     list_state: ListState,
     ui_state: TuiUiState,
     peers: Vec<Peer>,
+    hostname: String,
+    local_peer: Option<PeerId>,
 }
 
 pub struct Tui {
@@ -102,6 +101,11 @@ impl Tui {
 
     async fn handle_daemon(&mut self, event: DaemonEvent) {
         match event {
+            DaemonEvent::LocalInfo(hostname, peer) => {
+                info!("local info {}:{}", hostname.clone(), peer);
+                self.state.hostname = hostname;
+                self.state.local_peer = Some(peer);
+            }
             DaemonEvent::VerifyResult(peer_id, result) => {
                 if let Some(p) = self.state.peers.iter_mut().find(|p| p.id() == peer_id) {
                     p.0.state = if result {
@@ -183,17 +187,32 @@ impl Tui {
         let area = f.size();
         let items: Vec<ListItem> = state.peers.iter().map(ListItem::from).collect();
 
+        let [name_area, list_area] = Layout::vertical([
+            Constraint::Length(3),
+            Constraint::Min(0)
+        ]).areas(area);
+
+        let peer_id = state.local_peer.map(|p| p.to_string()).unwrap_or_else(|| "".into());
+        let name = Paragraph::new(vec![
+            Line::from(vec![
+                Span::raw(&state.hostname),
+                Span::raw(":"),
+                Span::raw(peer_id),
+            ]),
+        ]);
+        f.render_widget(name.block(Block::bordered()), name_area);
+
         let list = List::new(items)
             .block(
                 Block::bordered()
-                    .title("Localex Agent")
-                    .title_alignment(Alignment::Center),
+                    .title("Peers List")
+                    .title_alignment(Alignment::Left),
             )
             .highlight_style(Style::new().add_modifier(Modifier::REVERSED))
             .highlight_symbol(">")
             .repeat_highlight_symbol(true);
 
-        f.render_stateful_widget(list, area, &mut state.list_state);
+        f.render_stateful_widget(list, list_area, &mut state.list_state);
 
         if let TuiUiState::InCommingVerify(peer) = &state.ui_state {
             let carea = Self::centered_rect(100, 5, area);

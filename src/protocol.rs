@@ -16,6 +16,7 @@ pub enum DaemonEvent {
     VerifyResult(PeerId, bool),
     InCommingVerify(RemotePeer),
     PeerList(Vec<RemotePeer>),
+    LocalInfo(String, PeerId),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
