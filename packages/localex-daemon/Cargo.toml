@@ -1,0 +1,10 @@
+[package]
+name = "localex-daemon"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.86"
+common = { path = "../common" }
+tokio = { version = "1.38.0", features = ["full"] }
+tracing = "0.1.40"
