@@ -610,6 +610,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b6a852b24ab71dffc585bcb46eaf7959d175cb865a7152e35b348d1b2960422"
 
 [[package]]
+name = "common"
+version = "0.1.0"
+
+[[package]]
 name = "compact_str"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1949,6 +1953,38 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
 ]
+
+[[package]]
+name = "localex-daemon"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "common",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "localex-gui"
+version = "0.1.0"
+
+[[package]]
+name = "localex-ipc"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "ciborium",
+ "common",
+ "nix 0.29.0",
+ "serde",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "localex-tui"
+version = "0.1.0"
 
 [[package]]
 name = "lock_api"
