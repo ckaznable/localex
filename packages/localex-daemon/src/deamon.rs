@@ -3,10 +3,16 @@ use std::{collections::HashMap, time::Duration};
 use anyhow::Result;
 use futures::StreamExt;
 use libp2p::{
-    gossipsub::{self, TopicHash}, identity::Keypair, mdns, request_response, swarm::SwarmEvent, PeerId, Swarm,
-    SwarmBuilder,
+    gossipsub::{self, TopicHash},
+    identity::Keypair,
+    mdns, request_response,
+    swarm::SwarmEvent,
+    PeerId, Swarm, SwarmBuilder,
 };
-use protocol::{auth::{AuthResponseState, LocalExAuthRequest, LocalExAuthResponse}, peer::{DeamonPeer, PeerVerifyState}};
+use protocol::{
+    auth::{AuthResponseState, LocalExAuthRequest, LocalExAuthResponse},
+    peer::{DeamonPeer, PeerVerifyState},
+};
 use tracing::{error, info};
 
 use crate::behaviour::{LocalExBehaviour, LocalExBehaviourEvent};
@@ -46,18 +52,22 @@ impl<'a> Deamon<'a> {
     }
 
     pub fn listen_on(&mut self) -> Result<()> {
-        self.swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
+        self.swarm
+            .listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
         self.swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
 
         let hostname_topic = gossipsub::IdentTopic::new("hostname-broadcaset");
-        self.swarm.behaviour_mut().gossipsub.subscribe(&hostname_topic)?;
-        self.topics.insert(GossipTopic::Hostname, hostname_topic.hash());
+        self.swarm
+            .behaviour_mut()
+            .gossipsub
+            .subscribe(&hostname_topic)?;
+        self.topics
+            .insert(GossipTopic::Hostname, hostname_topic.hash());
 
         Ok(())
     }
 
     pub async fn run(&mut self) -> Result<()> {
-
         // daemon_tx
         //     .send(DaemonEvent::LocalInfo(
         //         local_hostname.clone(),
@@ -113,7 +123,10 @@ impl<'a> Deamon<'a> {
 
     fn broadcast_hostname(&mut self) {
         info!("broadcast hostname to peers");
-        if let Err(e) = self.swarm.behaviour_mut().gossipsub.publish(self.topics.get(&GossipTopic::Hostname).unwrap().clone(), self.hostname) {
+        if let Err(e) = self.swarm.behaviour_mut().gossipsub.publish(
+            self.topics.get(&GossipTopic::Hostname).unwrap().clone(),
+            self.hostname,
+        ) {
             error!("hostname publish error: {e:?}");
         }
     }
@@ -171,7 +184,10 @@ impl<'a> Deamon<'a> {
         Ok(())
     }
 
-    async fn handle_auth(&mut self, event: request_response::Event<LocalExAuthRequest, LocalExAuthResponse>) -> Result<()> {
+    async fn handle_auth(
+        &mut self,
+        event: request_response::Event<LocalExAuthRequest, LocalExAuthResponse>,
+    ) -> Result<()> {
         use request_response::Event::*;
         match event {
             InboundFailure { error, .. } => {
@@ -180,24 +196,41 @@ impl<'a> Deamon<'a> {
             OutboundFailure { error, .. } => {
                 error!("outbound failure: {error}");
             }
-            Message { peer, message: request_response::Message::Request { request, channel, .. }} => {
-                info!("{}:{} verfication request incomming", &request.hostname, peer);
+            Message {
+                peer,
+                message:
+                    request_response::Message::Request {
+                        request, channel, ..
+                    },
+            } => {
+                info!(
+                    "{}:{} verfication request incomming",
+                    &request.hostname, peer
+                );
                 self.add_peer(peer);
 
                 let peer = self.peers.get_mut(&peer).unwrap();
-                peer.set_hostname(request.hostname)
-                    .set_channel(channel);
+                peer.set_hostname(request.hostname).set_channel(channel);
 
                 // daemon_tx.send(DaemonEvent::InCommingVerify(peer.clone())).await;
                 // daemon_tx.send(DaemonEvent::PeerList(self.get_all_peers())).await;
             }
-            Message { peer, message: request_response::Message::Response { response, .. }} => {
+            Message {
+                peer,
+                message: request_response::Message::Response { response, .. },
+            } => {
                 let result = response.state == AuthResponseState::Accept;
-                info!("{}:{} verify result is {}", &response.hostname, peer, result);
+                info!(
+                    "{}:{} verify result is {}",
+                    &response.hostname, peer, result
+                );
 
                 if result {
                     self.verified(&peer);
-                    self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer);
+                    self.swarm
+                        .behaviour_mut()
+                        .gossipsub
+                        .add_explicit_peer(&peer);
                 }
 
                 let p = self.peers.get_mut(&peer).unwrap();
@@ -214,11 +247,18 @@ impl<'a> Deamon<'a> {
 
     fn remove_peer(&mut self, peer_id: &PeerId) {
         self.peers.remove(peer_id);
-        self.swarm.behaviour_mut().gossipsub.remove_explicit_peer(peer_id);
+        self.swarm
+            .behaviour_mut()
+            .gossipsub
+            .remove_explicit_peer(peer_id);
     }
 
     fn add_peer(&mut self, peer_id: PeerId) {
-        self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
+        self.swarm
+            .behaviour_mut()
+            .gossipsub
+            .add_explicit_peer(&peer_id);
+
         if self.peers.contains_key(&peer_id) {
             return;
         }
