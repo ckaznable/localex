@@ -5,14 +5,15 @@ use futures::StreamExt;
 use libp2p::{
     gossipsub::{self, TopicHash},
     identity::Keypair,
-    mdns, request_response,
+    mdns, request_response::{self, ResponseChannel},
     swarm::SwarmEvent,
     PeerId, Swarm, SwarmBuilder,
 };
+use localex_ipc::{ipc::IPC, IPCServer, RequestFromClient};
 use protocol::{
-    auth::{AuthResponseState, LocalExAuthRequest, LocalExAuthResponse},
-    peer::{DeamonPeer, PeerVerifyState},
+    auth::{AuthResponseState, LocalExAuthRequest, LocalExAuthResponse}, event::{ClientEvent, DeamonEvent}, peer::{DeamonPeer, PeerVerifyState}
 };
+use tokio::sync::mpsc;
 use tracing::{error, info};
 
 use crate::behaviour::{LocalExBehaviour, LocalExBehaviourEvent};
@@ -24,13 +25,19 @@ pub enum GossipTopic {
 
 pub struct Deamon<'a> {
     swarm: Swarm<LocalExBehaviour>,
+    server: IPCServer,
+    client_rx: mpsc::Receiver<RequestFromClient>,
     peers: HashMap<PeerId, DeamonPeer>,
     topics: HashMap<GossipTopic, TopicHash>,
+    auth_channels: HashMap<PeerId, ResponseChannel<LocalExAuthResponse>>,
     hostname: &'a str,
 }
 
 impl<'a> Deamon<'a> {
     pub fn new(local_keypair: Keypair, hostname: &'a str) -> Result<Self> {
+        let (tx, client_rx) = mpsc::channel(64);
+        let server = IPCServer::new(tx)?;
+
         let swarm = SwarmBuilder::with_existing_identity(local_keypair)
             .with_tokio()
             .with_tcp(
@@ -45,9 +52,12 @@ impl<'a> Deamon<'a> {
 
         Ok(Self {
             swarm,
+            server,
+            client_rx,
             hostname,
             peers: HashMap::new(),
             topics: HashMap::new(),
+            auth_channels: HashMap::new(),
         })
     }
 
@@ -68,48 +78,18 @@ impl<'a> Deamon<'a> {
     }
 
     pub async fn run(&mut self) -> Result<()> {
-        // daemon_tx
-        //     .send(DaemonEvent::LocalInfo(
-        //         local_hostname.clone(),
-        //         *swarm.local_peer_id(),
-        //     ))
-        //     .await;
-
         let mut hostname_broadcast_interval = tokio::time::interval(Duration::from_secs(60));
         loop {
             let hostname_broadcast_tick = hostname_broadcast_interval.tick();
 
             tokio::select! {
+                _ = self.server.listen() => {},
                 _ = hostname_broadcast_tick => self.broadcast_hostname(),
-                // client_event = client_rx.recv() => if let Some(event) = client_event {
-                //     match event {
-                //         ClientEvent::VerifyConfirm(peer_id, result) => {
-                //             let mut state = AuthResponseState::Deny;
-                //             if result {
-                //                 self.verified(&peer_id);
-                //                 swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
-                //                 state = AuthResponseState::Accept;
-                //             }
-                //
-                //             if let Some(channel) = self.get_peer_mut(&peer_id).unwrap().channel.take() {
-                //                 swarm.behaviour_mut().rr_auth.send_response(channel, LocalExAuthResponse {
-                //                     state,
-                //                     hostname: local_hostname.to_owned(),
-                //                 });
-                //             };
-                //         }
-                //         ClientEvent::DisconnectPeer(peer_id) => {
-                //             swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
-                //             self.remove_peer(&peer_id);
-                //         }
-                //         ClientEvent::RequestVerify(peer_id) => {
-                //             info!("send verification request to {}", peer_id);
-                //             swarm.behaviour_mut().rr_auth.send_request(&peer_id, LocalExAuthRequest {
-                //                 hostname: local_hostname.to_owned(),
-                //             });
-                //         }
-                //     }
-                // },
+                client_event = self.client_rx.recv() => if let Some(event) = client_event {
+                    if let Err(e) = self.handle_client_event(event.event).await {
+                        error!("client event error: {e:?}");
+                    }
+                },
                 swarm_event = self.swarm.select_next_some() => if let SwarmEvent::Behaviour(event) = swarm_event {
                     match event {
                         LocalExBehaviourEvent::RrAuth(event) => self.handle_auth(event).await?,
@@ -131,6 +111,47 @@ impl<'a> Deamon<'a> {
         }
     }
 
+    async fn handle_client_event(&mut self, event: ClientEvent) -> Result<()> {
+        use ClientEvent::*;
+        match event {
+            VerifyConfirm(peer_id, result) => {
+                let mut state = AuthResponseState::Deny;
+                if result {
+                    self.verified(&peer_id);
+                    self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
+                    state = AuthResponseState::Accept;
+                }
+
+                if let Some(channel) = self.auth_channels.remove(&peer_id) {
+                    let _ =self.swarm.behaviour_mut().rr_auth.send_response(channel, LocalExAuthResponse {
+                        state,
+                        hostname: String::from(self.hostname),
+                    });
+                };
+            }
+            DisconnectPeer(peer_id) => {
+                self.swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
+                self.remove_peer(&peer_id);
+            }
+            RequestVerify(peer_id) => {
+                info!("send verification request to {}", peer_id);
+                self.swarm.behaviour_mut().rr_auth.send_request(&peer_id, LocalExAuthRequest {
+                    hostname: String::from(self.hostname),
+                });
+            }
+            RequestLocalInfo => {
+                self.server
+                    .broadcast(DeamonEvent::LocalInfo(
+                        String::from(self.hostname),
+                        *self.swarm.local_peer_id(),
+                    ))
+                    .await;
+            }
+        }
+
+        Ok(())
+    }
+
     async fn handle_mdns(&mut self, event: mdns::Event) -> Result<()> {
         use mdns::Event::*;
         match event {
@@ -139,14 +160,14 @@ impl<'a> Deamon<'a> {
                     self.add_peer(peer_id);
                 }
 
-                // daemon_tx.send(DaemonEvent::PeerList(self.get_all_peers())).await;
+                self.broadcast_peers().await;
             }
             Expired(list) => {
                 for (peer_id, _) in list {
                     self.remove_peer(&peer_id);
                 }
 
-                // daemon_tx.send(DaemonEvent::PeerList(self.get_all_peers())).await;
+                self.broadcast_peers().await;
             }
         }
 
@@ -164,17 +185,18 @@ impl<'a> Deamon<'a> {
             }
             Message { message, .. } => {
                 if let Some(peer) = message.source.and_then(|peer| self.peers.get_mut(&peer)) {
-                    let hostname = String::from_utf8(message.data).unwrap_or_else(|_| String::from("unknown"));
+                    let hostname =
+                        String::from_utf8(message.data).unwrap_or_else(|_| String::from("unknown"));
                     info!("receive hostname broadcaset {hostname}");
                     peer.set_hostname(hostname);
                 }
 
-                // daemon_tx.send(DaemonEvent::PeerList(self.get_all_peers())).await;
+                self.broadcast_peers().await;
             }
             GossipsubNotSupported { peer_id } => {
                 info!("{} not support gossipsub", peer_id);
                 self.remove_peer(&peer_id);
-                // daemon_tx.send(DaemonEvent::PeerList(self.get_all_peers())).await;
+                self.broadcast_peers().await;
             }
             Unsubscribed { peer_id, .. } => {
                 info!("{} unsubscribe topic", peer_id);
@@ -209,11 +231,14 @@ impl<'a> Deamon<'a> {
                 );
                 self.add_peer(peer);
 
-                let peer = self.peers.get_mut(&peer).unwrap();
-                peer.set_hostname(request.hostname).set_channel(channel);
 
-                // daemon_tx.send(DaemonEvent::InCommingVerify(peer.clone())).await;
-                // daemon_tx.send(DaemonEvent::PeerList(self.get_all_peers())).await;
+                self.auth_channels.insert(peer, channel);
+
+                let peer = self.peers.get_mut(&peer).unwrap();
+                peer.set_hostname(request.hostname);
+
+                self.server.broadcast(DeamonEvent::InCommingVerify(peer.clone())).await;
+                self.broadcast_peers().await;
             }
             Message {
                 peer,
@@ -233,11 +258,12 @@ impl<'a> Deamon<'a> {
                         .add_explicit_peer(&peer);
                 }
 
-                let p = self.peers.get_mut(&peer).unwrap();
-                p.set_hostname(response.hostname);
+                self.peers
+                    .get_mut(&peer)
+                    .map(|p| p.set_hostname(response.hostname));
 
-                // daemon_tx.send(DaemonEvent::VerifyResult(peer, result)).await;
-                // daemon_tx.send(DaemonEvent::PeerList(self.get_all_peers())).await;
+                self.server.broadcast(DeamonEvent::VerifyResult(peer, result)).await;
+                self.broadcast_peers().await;
             }
             _ => {}
         }
@@ -273,8 +299,7 @@ impl<'a> Deamon<'a> {
         }
     }
 
-    #[inline]
-    fn get_all_peers(&self) -> Vec<DeamonPeer> {
+    async fn broadcast_peers(&self) -> Vec<DeamonPeer> {
         self.peers.values().cloned().collect()
     }
 }

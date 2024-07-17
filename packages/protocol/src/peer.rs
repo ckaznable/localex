@@ -1,8 +1,7 @@
-use libp2p::{request_response::ResponseChannel, PeerId};
+use libp2p::PeerId;
+use serde::{Deserialize, Serialize};
 
-use crate::auth::LocalExAuthResponse;
-
-#[derive(Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum PeerVerifyState {
     Verified,
     Blocked,
@@ -16,11 +15,11 @@ impl PeerVerifyState {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct DeamonPeer {
     pub peer_id: PeerId,
     pub state: PeerVerifyState,
     pub hostname: Option<String>,
-    pub channel: Option<ResponseChannel<LocalExAuthResponse>>,
 }
 
 impl DeamonPeer {
@@ -29,13 +28,7 @@ impl DeamonPeer {
             peer_id,
             state: PeerVerifyState::default(),
             hostname: None,
-            channel: None,
         }
-    }
-
-    pub fn set_channel(&mut self, channel: ResponseChannel<LocalExAuthResponse>) -> &mut Self {
-        self.channel = Some(channel);
-        self
     }
 
     pub fn set_hostname(&mut self, hostname: String) -> &mut Self {
@@ -50,7 +43,6 @@ impl Clone for DeamonPeer {
             peer_id: self.peer_id,
             state: self.state,
             hostname: self.hostname.clone(),
-            channel: None,
         }
     }
 }

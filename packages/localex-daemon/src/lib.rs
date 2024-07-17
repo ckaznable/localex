@@ -10,15 +10,11 @@ mod behaviour;
 mod deamon;
 mod secret;
 
-fn init_logger(param: config::Config) {
+pub async fn main(param: config::Config) -> Result<()> {
     logger::init_logger(logger::LoggerConfig {
-        filename: param.log_file_name,
+        filename: &param.log_file_name,
         stdout: false,
-    });
-}
-
-pub async fn main<'a>(param: config::Config<'a>) -> Result<()> {
-    init_logger(param);
+    })?;
 
     let store = SecretStore::new().await?;
     let local_keypair = if param.new_profile {
@@ -39,7 +35,7 @@ pub async fn main<'a>(param: config::Config<'a>) -> Result<()> {
         .unwrap_or_else(|_| String::from("unknown"));
 
     let mut deamon = Deamon::new(local_keypair, &_hostname)?;
-    deamon.listen_on();
+    deamon.listen_on()?;
     deamon.run().await?;
 
     Ok(())
