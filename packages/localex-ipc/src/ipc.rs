@@ -58,7 +58,7 @@ where
     }
 
     async fn listen(&mut self) -> Result<()> {
-        let listener = UnixListener::bind(sock::get_sock_path())?;
+        let listener = UnixListener::bind(sock::get_sock_mount_path())?;
         loop {
             if let Ok((stream, _)) = listener.accept().await {
                 if let Err(err) = self.handle_stream(stream).await {

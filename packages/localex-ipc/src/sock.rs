@@ -25,7 +25,16 @@ fn check_permissions<P: AsRef<Path>>(path: P) -> std::io::Result<bool> {
     Ok(has_write_permission)
 }
 
-pub fn get_sock_path() -> &'static Path {
+pub fn get_sock_connect_path() -> &'static Path {
+    let sys_path = Path::new(SOCK_SYSTEM_PATH);
+    if sys_path.exists() {
+        sys_path
+    } else {
+        Path::new(SOCK_PATH)
+    }
+}
+
+pub fn get_sock_mount_path() -> &'static Path {
     let p = match check_permissions(SOCK_SYSTEM_PATH) {
         Ok(true) => SOCK_SYSTEM_PATH,
         _ => SOCK_PATH,
@@ -35,6 +44,6 @@ pub fn get_sock_path() -> &'static Path {
 }
 
 pub fn is_sock_exist() -> bool {
-    let path = get_sock_path();
-    path.exists()
+    Path::new(SOCK_SYSTEM_PATH).exists() ||
+    Path::new(SOCK_PATH).exists()
 }

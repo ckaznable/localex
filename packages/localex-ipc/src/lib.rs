@@ -56,7 +56,7 @@ impl IPC<RequestFromClient, RequestFromServer> for IPCServer {
 impl Drop for IPCServer {
     fn drop(&mut self) {
         self.id_map.drain().for_each(|(_, s)| drop(s));
-        let _ = fs::remove_file(sock::get_sock_path());
+        let _ = fs::remove_file(sock::get_sock_mount_path());
     }
 }
 
