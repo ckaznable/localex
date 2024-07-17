@@ -6,7 +6,6 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.86"
 ciborium = "0.2.2"
-common = { path = "../common" }
 nix = "0.29.0"
 tokio = { version = "1.38.0", features = ["full"] }
 tracing = "0.1.40"
