@@ -28,7 +28,7 @@ impl Server {
     }
 
     pub async fn reply(&self, client_id: &str, msg: IPCEventResponse) -> Result<()> {
-        let stream = self.id_map.get(client_id).ok_or(anyhow!(""))?;
+        let stream = self.id_map.get(client_id).ok_or(anyhow!("reply error"))?;
         self.send(stream, &msg).await
     }
 }
