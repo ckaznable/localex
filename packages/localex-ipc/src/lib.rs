@@ -44,6 +44,7 @@ impl IPC<IPCEventRequest, IPCEventResponse> for Server {
 
 impl Drop for Server {
     fn drop(&mut self) {
+        self.id_map.drain().for_each(|(_, s)| drop(s));
         let _ = fs::remove_file(sock::get_sock_path());
     }
 }

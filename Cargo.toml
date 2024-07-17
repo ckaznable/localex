@@ -7,5 +7,5 @@ members = [
   "packages/localex-gui",
   "packages/localex-ipc",
   "packages/localex-tui",
-  "packages/logger",
+  "packages/logger", "packages/protocol",
 ]

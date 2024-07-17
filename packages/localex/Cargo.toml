@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-libp2p = { git = "https://github.com/libp2p/rust-libp2p.git", commit = "c19c1409824a68586c3779729329040a554f12db", features = ["tcp", "tokio", "noise", "yamux", "macros", "gossipsub", "mdns", "request-response", "cbor", "quic"] }
+libp2p = { git = "https://github.com/libp2p/rust-libp2p.git", commit = "8e28edf69a5f25d1d919962a70fa32203b48f8dd", features = ["tcp", "tokio", "noise", "yamux", "macros", "gossipsub", "mdns", "request-response", "cbor", "quic"] }
 futures = "0.3.21"
 tokio = { version = "1", features = ["full"] }
 anyhow = "1.0.86"

@@ -1,6 +1,8 @@
 use anyhow::Result;
+use clap::Parser;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    localex_daemon::main().await
+    let param = localex_daemon::cli::Cli::parse();
+    localex_daemon::main(param.into()).await
 }

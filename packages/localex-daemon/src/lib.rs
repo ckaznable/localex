@@ -1,5 +1,46 @@
 use anyhow::Result;
+use deamon::Deamon;
+use libp2p::identity::Keypair;
+use secret::SecretStore;
 
-pub async fn main() -> Result<()> {
+pub mod cli;
+pub mod config;
+
+mod behaviour;
+mod deamon;
+mod secret;
+
+fn init_logger(param: config::Config) {
+    logger::init_logger(logger::LoggerConfig {
+        filename: param.log_file_name,
+        stdout: false,
+    });
+}
+
+pub async fn main<'a>(param: config::Config<'a>) -> Result<()> {
+    init_logger(param);
+
+    let store = SecretStore::new().await?;
+    let local_keypair = if param.new_profile {
+        Keypair::generate_ed25519()
+    } else {
+        store
+            .get_local_key()
+            .await
+            .expect("can't get libp2p keypair")
+    };
+
+    if !param.no_save {
+        store.save_local_key(&local_keypair).await?;
+    }
+
+    let _hostname = hostname::get()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|_| String::from("unknown"));
+
+    let mut deamon = Deamon::new(local_keypair, &_hostname)?;
+    deamon.listen_on();
+    deamon.run().await?;
+
     Ok(())
 }

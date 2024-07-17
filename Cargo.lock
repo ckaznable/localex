@@ -1966,9 +1966,9 @@ dependencies = [
  "libp2p",
  "localex-ipc",
  "logger",
+ "protocol",
  "secret-service",
  "serde",
- "serde_repr",
  "tokio",
  "tracing",
 ]
@@ -2600,6 +2600,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.71",
+]
+
+[[package]]
+name = "protocol"
+version = "0.1.0"
+dependencies = [
+ "libp2p",
+ "serde",
+ "serde_repr",
 ]
 
 [[package]]
