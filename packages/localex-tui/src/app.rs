@@ -48,8 +48,8 @@ pub struct App {
 }
 
 impl App {
-    pub fn new() -> Result<Self> {
-        let client = IPCClient::new()?;
+    pub async fn new() -> Result<Self> {
+        let client = IPCClient::new().await?;
 
         // setup terminal
         enable_raw_mode()?;
