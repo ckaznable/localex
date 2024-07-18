@@ -130,11 +130,12 @@ impl App {
     }
 
     async fn handle_input(&mut self, code: KeyCode) {
+        use KeyCode::*;
         match code {
-            KeyCode::Char('q') | KeyCode::Char('Q') => self.quit(),
-            KeyCode::Char('j') => self.state.list_state.select_next(),
-            KeyCode::Char('k') => self.state.list_state.select_previous(),
-            KeyCode::Enter => {
+            Char('q') | Char('Q') => self.quit(),
+            Char('j') => self.state.list_state.select_next(),
+            Char('k') => self.state.list_state.select_previous(),
+            Enter => {
                 if let Some(index) = self.state.list_state.selected() {
                     if let Some(peer) = self.state.peers.get(index) {
                         info!("request verication to remote peer {}", peer.id());
@@ -144,7 +145,7 @@ impl App {
                     }
                 }
             }
-            KeyCode::Char('d') => {
+            Char('d') => {
                 if let Some(index) = self.state.list_state.selected() {
                     if let Some(peer) = self.state.peers.get(index) {
                         self.client
@@ -153,7 +154,7 @@ impl App {
                     }
                 }
             }
-            KeyCode::Char('y') | KeyCode::Char('Y') => {
+            Char('y') | Char('Y') => {
                 if let AppUIState::InCommingVerify(p) = &self.state.ui_state {
                     self.client
                         .send(ClientEvent::VerifyConfirm(p.id(), true))
@@ -166,7 +167,7 @@ impl App {
 
                 self.state.ui_state = AppUIState::List;
             }
-            KeyCode::Char('n') | KeyCode::Char('N') => {
+            Char('n') | Char('N') => {
                 if let AppUIState::InCommingVerify(p) = &self.state.ui_state {
                     self.client
                         .send(ClientEvent::VerifyConfirm(p.id(), false))
