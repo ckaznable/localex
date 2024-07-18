@@ -12,3 +12,4 @@ tokio = { version = "1.38.0", features = ["full"] }
 tracing = "0.1.40"
 serde = { version = "1.0", features = ["derive"] }
 async-trait = "0.1.81"
+uuid = { version = "1.10.0", features = ["v4", "fast-rng", "macro-diagnostics"] }

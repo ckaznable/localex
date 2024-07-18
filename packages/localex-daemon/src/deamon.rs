@@ -9,11 +9,10 @@ use libp2p::{
     swarm::SwarmEvent,
     PeerId, Swarm, SwarmBuilder,
 };
-use localex_ipc::{ipc::IPC, IPCServer, RequestFromClient};
+use localex_ipc::IPCServer;
 use protocol::{
     auth::{AuthResponseState, LocalExAuthRequest, LocalExAuthResponse}, event::{ClientEvent, DeamonEvent}, peer::{DeamonPeer, PeerVerifyState}
 };
-use tokio::sync::mpsc;
 use tracing::{error, info};
 
 use crate::behaviour::{LocalExBehaviour, LocalExBehaviourEvent};
@@ -26,7 +25,6 @@ pub enum GossipTopic {
 pub struct Deamon<'a> {
     swarm: Swarm<LocalExBehaviour>,
     server: IPCServer,
-    client_rx: mpsc::Receiver<RequestFromClient>,
     peers: HashMap<PeerId, DeamonPeer>,
     topics: HashMap<GossipTopic, TopicHash>,
     auth_channels: HashMap<PeerId, ResponseChannel<LocalExAuthResponse>>,
@@ -35,8 +33,7 @@ pub struct Deamon<'a> {
 
 impl<'a> Deamon<'a> {
     pub fn new(local_keypair: Keypair, hostname: &'a str) -> Result<Self> {
-        let (tx, client_rx) = mpsc::channel(64);
-        let server = IPCServer::new(tx)?;
+        let server = IPCServer::new()?;
 
         let swarm = SwarmBuilder::with_existing_identity(local_keypair)
             .with_tokio()
@@ -53,7 +50,6 @@ impl<'a> Deamon<'a> {
         Ok(Self {
             swarm,
             server,
-            client_rx,
             hostname,
             peers: HashMap::new(),
             topics: HashMap::new(),
@@ -78,15 +74,16 @@ impl<'a> Deamon<'a> {
     }
 
     pub async fn run(&mut self) -> Result<()> {
+        self.server.prepare().await?;
+
         let mut hostname_broadcast_interval = tokio::time::interval(Duration::from_secs(60));
         loop {
             let hostname_broadcast_tick = hostname_broadcast_interval.tick();
 
             tokio::select! {
-                _ = self.server.listen() => {},
                 _ = hostname_broadcast_tick => self.broadcast_hostname(),
-                client_event = self.client_rx.recv() => if let Some(event) = client_event {
-                    if let Err(e) = self.handle_client_event(event.event).await {
+                    event = self.server.recv() => {
+                    if let Err(e) = self.handle_client_event(event).await {
                         error!("client event error: {e:?}");
                     }
                 },

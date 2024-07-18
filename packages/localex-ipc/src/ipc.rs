@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::{
     net::{UnixListener, UnixStream},
-    sync::Mutex,
+    sync::{mpsc, Mutex}, task::JoinHandle,
 };
 use tracing::error;
 
@@ -20,12 +20,26 @@ thread_local! {
 #[async_trait]
 pub trait IPC<I, O>
 where
-    I: Serialize + DeserializeOwned + Send + Sync,
+    I: Serialize + DeserializeOwned + Send + Sync + Clone + 'static,
     O: Serialize + DeserializeOwned + Send + Sync,
 {
-    async fn handle_incomming_msg(&mut self, stream: UnixStream, msg: I) -> Result<()>;
+    fn ipc_tx(&self) -> mpsc::Sender<(UnixStream, I)>;
+    fn ipc_rx(&mut self) -> &mut mpsc::Receiver<(UnixStream, I)>;
 
-    async fn handle_stream(&mut self, stream: UnixStream) -> Result<()> {
+    #[allow(clippy::type_complexity)]
+    fn get_ipc_channel() -> (mpsc::Sender<(UnixStream, I)>, mpsc::Receiver<(UnixStream, I)>) {
+        mpsc::channel(16)
+    }
+
+    async fn recv_stream(&mut self) -> (UnixStream, I) {
+        loop {
+            if let Some(data) = self.ipc_rx().recv().await {
+                return data
+            }
+        }
+    }
+
+    async fn handle_stream(tx: mpsc::Sender<(UnixStream, I)>, stream: UnixStream) -> Result<()> {
         stream.readable().await?;
 
         let buffer = DATA_BUF.with(|d| d.clone());
@@ -39,7 +53,7 @@ where
             Ok(n) => {
                 let data = &buffer[..n];
                 let request: I = ciborium::from_reader_with_buffer(data, &mut *read_buf)?;
-                self.handle_incomming_msg(stream, request).await?;
+                tx.send((stream, request)).await?;
             }
             _ => return Err(anyhow!("read buffer error")),
         }
@@ -47,7 +61,7 @@ where
         Ok(())
     }
 
-    async fn send<'a>(&self, stream: &'a UnixStream, msg: &'a O) -> Result<()> {
+    async fn send_to_stream(&self, stream: &UnixStream, msg: &O) -> Result<()> {
         let writer_buf = WRITER_BUF.with(|w| w.clone());
         let mut writer_buf = writer_buf.lock().await;
 
@@ -57,15 +71,21 @@ where
         Ok(())
     }
 
-    async fn listen(&mut self) -> Result<()> {
-        let listener = UnixListener::bind(sock::get_sock_mount_path())?;
-        loop {
-            if let Ok((stream, _)) = listener.accept().await {
-                if let Err(err) = self.handle_stream(stream).await {
-                    error!("{err:?}");
-                    continue;
+    async fn listen(&self) -> Result<JoinHandle<Result<()>>> {
+        let tx = self.ipc_tx();
+
+        let handle = tokio::spawn(async move {
+            let listener = UnixListener::bind(sock::get_sock_mount_path())?;
+            loop {
+                if let Ok((stream, _)) = listener.accept().await {
+                    if let Err(err) = Self::handle_stream(tx.clone(), stream).await {
+                        error!("{err:?}");
+                        continue;
+                    }
                 }
             }
-        }
+        });
+
+        Ok(handle)
     }
 }
