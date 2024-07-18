@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+logger = { path = "../logger/" }
 localex-ipc = { path = "../localex-ipc/" }
 protocol = { path = "../protocol/" }
 ratatui = "0.27.0"

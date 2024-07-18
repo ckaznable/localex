@@ -2044,6 +2044,7 @@ dependencies = [
  "futures",
  "libp2p",
  "localex-ipc",
+ "logger",
  "protocol",
  "ratatui",
  "serde",
