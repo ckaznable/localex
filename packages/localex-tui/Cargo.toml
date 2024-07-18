@@ -4,3 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+localex-ipc = { path = "../localex-ipc/" }
+protocol = { path = "../protocol/" }
+ratatui = "0.27.0"
+crossterm = { version = "0.27.0", features = ["serde", "event-stream"] }
+tokio = { version = "1", features = ["full"] }
+libp2p = { git = "https://github.com/libp2p/rust-libp2p.git", commit = "8e28edf69a5f25d1d919962a70fa32203b48f8dd", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+tracing = "0.1.40"
+futures = "0.3.21"
+anyhow = "1.0.86"
+clap = { version = "4.5.9", features = ["derive"] }
