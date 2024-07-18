@@ -1,25 +1,29 @@
+pub mod event;
 pub mod ipc;
 pub mod sock;
-pub mod event;
 
-use std::{collections::HashMap, fs};
+use std::{collections::HashMap, fs, sync::Arc};
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use event::{IPCEventRequest, IPCEventResponse};
-use ipc::IPC;
+use ipc::{IPCMsgPack, IPC};
 use protocol::event::{ClientEvent, DeamonEvent};
-use tokio::{net::UnixStream, sync::mpsc, task::JoinHandle};
+use tokio::{
+    net::unix::{OwnedReadHalf, OwnedWriteHalf},
+    sync::mpsc,
+    task::JoinHandle,
+};
 use tracing::error;
 
 pub type RequestFromClient = IPCEventRequest<ClientEvent>;
 pub type RequestFromServer = IPCEventResponse<DeamonEvent>;
 
 pub struct IPCServer {
-    tx: mpsc::Sender<(UnixStream, RequestFromClient)>,
-    rx: mpsc::Receiver<(UnixStream, RequestFromClient)>,
-    id_map: HashMap<String, UnixStream>,
-    listen_handle: Option<JoinHandle<Result<()>>>
+    tx: mpsc::Sender<IPCMsgPack<RequestFromClient>>,
+    rx: mpsc::Receiver<IPCMsgPack<RequestFromClient>>,
+    id_map: HashMap<String, Arc<OwnedWriteHalf>>,
+    listen_handle: Option<JoinHandle<Result<()>>>,
 }
 
 impl IPCServer {
@@ -42,7 +46,7 @@ impl IPCServer {
         Ok(())
     }
 
-    pub async fn reply(&self, client_id: &str, msg: RequestFromServer) -> Result<()> {
+    pub async fn reply(&mut self, client_id: &str, msg: RequestFromServer) -> Result<()> {
         let stream = self.id_map.get(client_id).ok_or(anyhow!("reply error"))?;
         self.send_to_stream(stream, &msg).await
     }
@@ -65,11 +69,11 @@ impl IPCServer {
 
 #[async_trait]
 impl IPC<RequestFromClient, RequestFromServer> for IPCServer {
-    fn ipc_tx(&self) -> mpsc::Sender<(UnixStream, RequestFromClient)> {
+    fn ipc_tx(&self) -> mpsc::Sender<IPCMsgPack<RequestFromClient>> {
         self.tx.clone()
     }
 
-    fn ipc_rx(&mut self) -> &mut mpsc::Receiver<(UnixStream, RequestFromClient)> {
+    fn ipc_rx(&mut self) -> &mut mpsc::Receiver<IPCMsgPack<RequestFromClient>> {
         &mut self.rx
     }
 }
@@ -82,20 +86,27 @@ impl Drop for IPCServer {
 }
 
 pub struct IPCClient {
-    tx: mpsc::Sender<(UnixStream, RequestFromServer)>,
-    rx: mpsc::Receiver<(UnixStream, RequestFromServer)>,
-    stream: Option<UnixStream>,
+    tx: mpsc::Sender<IPCMsgPack<RequestFromServer>>,
+    rx: mpsc::Receiver<IPCMsgPack<RequestFromServer>>,
+    stream_read: Option<Arc<OwnedReadHalf>>,
+    stream_write: Arc<OwnedWriteHalf>,
+    stream_handle: Option<JoinHandle<Result<()>>>,
     id: String,
 }
 
 impl IPCClient {
-    pub fn new() -> Result<Self> {
+    pub async fn new() -> Result<Self> {
         if sock::is_sock_exist() {
             let (tx, rx) = Self::get_ipc_channel();
+            let stream = Self::connect().await?;
+            let (read, write) = stream.into_split();
+
             Ok(Self {
                 tx,
                 rx,
-                stream: None,
+                stream_read: Some(Arc::new(read)),
+                stream_write: Arc::new(write),
+                stream_handle: None,
                 id: uuid::Uuid::new_v4().to_string(),
             })
         } else {
@@ -103,33 +114,38 @@ impl IPCClient {
         }
     }
 
+    pub async fn prepare(&mut self) -> Result<()> {
+        if let Some(r) = self.stream_read.take() {
+            self.stream_handle = self.wait_for_stream(r, self.stream_write.clone()).await.ok();
+        }
+
+        Ok(())
+    }
+
     pub async fn recv(&mut self) -> DeamonEvent {
-        let (s, data) = self.recv_stream().await;
-        self.stream = Some(s);
+        let (_, data) = self.recv_stream().await;
         data.event
     }
 
     pub async fn send(&mut self, event: ClientEvent) -> Result<()> {
-        let Some(stream) = &self.stream else {
-            let err: &'static str = "send fail, unix stream object not found";
-            error!(err);
-            return Err(anyhow!(err));
-        };
-
-        self.send_to_stream(stream, &IPCEventRequest {
-            client_id: self.id.clone(),
-            event,
-        }).await
+        self.send_to_stream(
+            &self.stream_write,
+            &IPCEventRequest {
+                client_id: self.id.clone(),
+                event,
+            },
+        )
+        .await
     }
 }
 
 #[async_trait]
 impl IPC<RequestFromServer, RequestFromClient> for IPCClient {
-    fn ipc_tx(&self) -> mpsc::Sender<(UnixStream, RequestFromServer)> {
+    fn ipc_tx(&self) -> mpsc::Sender<IPCMsgPack<RequestFromServer>> {
         self.tx.clone()
     }
 
-    fn ipc_rx(&mut self) -> &mut mpsc::Receiver<(UnixStream, RequestFromServer)> {
+    fn ipc_rx(&mut self) -> &mut mpsc::Receiver<IPCMsgPack<RequestFromServer>> {
         &mut self.rx
     }
 }
