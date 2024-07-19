@@ -1980,21 +1980,10 @@ name = "localex"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "ciborium",
  "clap",
- "crossterm",
- "dirs",
  "futures",
- "hostname 0.4.0",
- "libp2p",
- "ratatui",
- "secret-service",
- "serde",
- "serde_repr",
  "tokio",
  "tracing",
- "tracing-appender",
- "tracing-subscriber",
 ]
 
 [[package]]
