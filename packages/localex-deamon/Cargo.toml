@@ -1,5 +1,5 @@
 [package]
-name = "localex-daemon"
+name = "localex-deamon"
 version = "0.1.0"
 edition = "2021"
 
