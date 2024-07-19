@@ -70,6 +70,9 @@ impl App {
     pub async fn run(&mut self) -> Result<()> {
         let mut reader = crossterm::event::EventStream::new();
 
+        self.client.prepare().await;
+        self.client.send(ClientEvent::RequestLocalInfo).await;
+
         loop {
             self.terminal.draw(|f| Self::ui(f, &mut self.state))?;
 
