@@ -3,6 +3,6 @@ use clap::Parser;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let param = localex_tui::cli::Cli::parse();
-    localex_tui::main(param.into()).await
+    let param = tocalex::cli::Cli::parse();
+    tocalex::main(param.into()).await
 }
