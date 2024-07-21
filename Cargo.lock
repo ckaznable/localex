@@ -2021,7 +2021,6 @@ dependencies = [
  "futures",
  "jni",
  "libp2p",
- "localex-daemon",
  "network",
  "protocol",
  "tokio",
