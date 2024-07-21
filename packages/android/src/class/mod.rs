@@ -4,6 +4,7 @@ use jni::sys::jobject;
 use jni::JNIEnv;
 use protocol::peer::{DaemonPeer, PeerVerifyState};
 
+#[allow(non_snake_case)]
 pub unsafe fn create_DaemonPeer(
     env: &mut JNIEnv,
     class: &JClass,
@@ -42,6 +43,7 @@ pub unsafe fn create_DaemonPeer(
     Ok(object.into_raw())
 }
 
+#[allow(non_snake_case)]
 pub(crate) mod verify_state {
     use anyhow::Result;
     use jni::{objects::JClass, sys::jobject, JNIEnv};
@@ -85,6 +87,7 @@ pub(crate) mod verify_state {
     }
 }
 
+#[allow(non_snake_case)]
 pub(crate) mod client_event {
     use anyhow::Result;
     use jni::objects::{JObject, JValue};
@@ -130,6 +133,7 @@ pub(crate) mod client_event {
     }
 }
 
+#[allow(non_snake_case)]
 mod daemon_event {
     use anyhow::Result;
     use jni::objects::{JClass, JObject, JValue};
