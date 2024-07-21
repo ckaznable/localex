@@ -9,7 +9,7 @@ use futures::{FutureExt, StreamExt};
 use libp2p::PeerId;
 use localex_ipc::IPCClient;
 use protocol::{
-    event::{ClientEvent, DeamonEvent},
+    event::{ClientEvent, DaemonEvent},
     peer::PeerVerifyState,
 };
 use ratatui::{
@@ -97,8 +97,8 @@ impl App {
         self.should_quit = true;
     }
 
-    async fn handle_deamon(&mut self, event: DeamonEvent) {
-        use DeamonEvent::*;
+    async fn handle_deamon(&mut self, event: DaemonEvent) {
+        use DaemonEvent::*;
         match event {
             LocalInfo(hostname, peer) => {
                 info!("local info {}:{}", hostname.clone(), peer);

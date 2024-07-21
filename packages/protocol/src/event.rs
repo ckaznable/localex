@@ -12,7 +12,7 @@ pub enum ClientEvent {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub enum DeamonEvent {
+pub enum DaemonEvent {
     VerifyResult(PeerId, bool),
     InComingVerify(DaemonPeer),
     PeerList(Vec<DaemonPeer>),

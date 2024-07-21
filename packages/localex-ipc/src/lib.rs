@@ -8,7 +8,7 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use event::{IPCEventRequest, IPCEventResponse};
 use ipc::{IPCMsgPack, IPC};
-use protocol::event::{ClientEvent, DeamonEvent};
+use protocol::event::{ClientEvent, DaemonEvent};
 use tokio::{
     net::unix::{OwnedReadHalf, OwnedWriteHalf},
     sync::mpsc,
@@ -17,7 +17,7 @@ use tokio::{
 use tracing::error;
 
 pub type RequestFromClient = IPCEventRequest<ClientEvent>;
-pub type RequestFromServer = IPCEventResponse<DeamonEvent>;
+pub type RequestFromServer = IPCEventResponse<DaemonEvent>;
 
 pub struct IPCServer {
     tx: mpsc::Sender<IPCMsgPack<RequestFromClient>>,
@@ -51,7 +51,7 @@ impl IPCServer {
         self.send_to_stream(stream, &msg).await
     }
 
-    pub async fn broadcast(&self, msg: DeamonEvent) {
+    pub async fn broadcast(&self, msg: DaemonEvent) {
         let msg = IPCEventResponse::from(msg);
         for s in self.id_map.values() {
             if let Err(e) = self.send_to_stream(s, &msg).await {
@@ -122,7 +122,7 @@ impl IPCClient {
         Ok(())
     }
 
-    pub async fn recv(&mut self) -> DeamonEvent {
+    pub async fn recv(&mut self) -> DaemonEvent {
         let (_, data) = self.recv_stream().await;
         data.event
     }

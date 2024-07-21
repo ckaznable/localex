@@ -11,7 +11,7 @@ use libp2p::{
 };
 use localex_ipc::IPCServer;
 use protocol::{
-    auth::{AuthResponseState, LocalExAuthRequest, LocalExAuthResponse}, event::{ClientEvent, DeamonEvent}, peer::{DaemonPeer, PeerVerifyState}
+    auth::{AuthResponseState, LocalExAuthRequest, LocalExAuthResponse}, event::{ClientEvent, DaemonEvent}, peer::{DaemonPeer, PeerVerifyState}
 };
 use tracing::{error, info};
 
@@ -138,7 +138,7 @@ impl<'a> Daemon<'a> {
             }
             RequestLocalInfo => {
                 self.server
-                    .broadcast(DeamonEvent::LocalInfo(
+                    .broadcast(DaemonEvent::LocalInfo(
                         String::from(self.hostname),
                         *self.swarm.local_peer_id(),
                     ))
@@ -234,7 +234,7 @@ impl<'a> Daemon<'a> {
                 let peer = self.peers.get_mut(&peer).unwrap();
                 peer.set_hostname(request.hostname);
 
-                self.server.broadcast(DeamonEvent::InComingVerify(peer.clone())).await;
+                self.server.broadcast(DaemonEvent::InComingVerify(peer.clone())).await;
                 self.broadcast_peers().await;
             }
             Message {
@@ -259,7 +259,7 @@ impl<'a> Daemon<'a> {
                     .get_mut(&peer)
                     .map(|p| p.set_hostname(response.hostname));
 
-                self.server.broadcast(DeamonEvent::VerifyResult(peer, result)).await;
+                self.server.broadcast(DaemonEvent::VerifyResult(peer, result)).await;
                 self.broadcast_peers().await;
             }
             _ => {}
