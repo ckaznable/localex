@@ -114,7 +114,7 @@ impl App {
                     };
                 }
             }
-            InCommingVerify(peer) => {
+            InComingVerify(peer) => {
                 self.state.ui_state = self
                     .state
                     .peers

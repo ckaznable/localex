@@ -234,7 +234,7 @@ impl<'a> Daemon<'a> {
                 let peer = self.peers.get_mut(&peer).unwrap();
                 peer.set_hostname(request.hostname);
 
-                self.server.broadcast(DeamonEvent::InCommingVerify(peer.clone())).await;
+                self.server.broadcast(DeamonEvent::InComingVerify(peer.clone())).await;
                 self.broadcast_peers().await;
             }
             Message {
