@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use protocol::event::DaemonEvent;
 use std::{sync::Arc, time::Duration};
 
 use libp2p::{identity::Keypair, Swarm, SwarmBuilder};
@@ -16,15 +17,13 @@ type ChannelReceiver<T> = Arc<Mutex<mpsc::Receiver<T>>>;
 static mut RUNTIME: Option<Arc<std::sync::Mutex<Runtime>>> = None;
 static mut SERVICE: Option<Arc<Mutex<Service>>> = None;
 
-static mut SENDER: Option<ChannelSender<Event>> = None;
-static mut RECEIVER: Option<ChannelReceiver<Event>> = None;
+static mut SENDER: Option<ChannelSender<DaemonEvent>> = None;
+static mut RECEIVER: Option<ChannelReceiver<DaemonEvent>> = None;
 
 static mut STOP_SINGLE_SENDER: Option<ChannelSender<bool>> = None;
 static mut STOP_SINGLE_RECVER: Option<ChannelReceiver<bool>> = None;
 
 static mut LISTENER_HANDLE: Option<Arc<JoinHandle<Result<()>>>> = None;
-
-enum Event {}
 
 struct Service {
     swarm: Swarm<LocalExBehaviour>,
@@ -77,7 +76,7 @@ fn get_or_create_service(keypair: Option<Keypair>) -> Result<Arc<Mutex<Service>>
     }
 }
 
-fn get_or_create_channel() -> Result<(ChannelSender<Event>, ChannelReceiver<Event>)> {
+fn get_or_create_channel() -> Result<(ChannelSender<DaemonEvent>, ChannelReceiver<DaemonEvent>)> {
     unsafe {
         SENDER
             .clone()
@@ -115,6 +114,8 @@ fn get_or_create_stop_single() -> Result<(ChannelSender<bool>, ChannelReceiver<b
 #[allow(clippy::missing_safety_doc)]
 pub mod android {
     extern crate jni;
+    use self::class::daemon_event::get_jdaemon_event;
+
     use super::*;
     use jni::objects::{JByteArray, JClass};
     use jni::sys::{jbyteArray, jobject};
@@ -141,8 +142,8 @@ pub mod android {
 
     #[no_mangle]
     pub unsafe extern "system" fn Java_io_ckaznable_localax_LocalEx_recv(
-        _: JNIEnv,
-        _: JClass,
+        mut env: JNIEnv,
+        class: JClass,
     ) -> jni::errors::Result<jobject> {
         let runtime = get_or_create_runtime().map_err(|_| jni::errors::Error::JavaException)?.clone();
         let recv = get_or_create_channel().map_err(|_| jni::errors::Error::JavaException)?.1.clone();
@@ -158,9 +159,7 @@ pub mod android {
                     .ok_or_else(|| jni::errors::Error::JavaException)
             });
 
-        res
-            .map(|_| todo!())
-            .map_err(|_| jni::errors::Error::JavaException)
+        res.and_then(|e| get_jdaemon_event(&mut env, &class, e).map_err(|_| jni::errors::Error::JavaException))
     }
 
     #[no_mangle]
@@ -174,7 +173,7 @@ pub mod android {
         }
 
         let runtime = get_or_create_runtime().map_err(|_| jni::errors::Error::JavaException)?;
-        let service = get_or_create_service(None).map_err(|_| jni::errors::Error::JavaException)?.clone();
+        let service = get_or_create_service(None).map_err(|_| jni::errors::Error::JavaException)?;
         let (_, stop_rx) = get_or_create_stop_single().map_err(|_| jni::errors::Error::JavaException)?;
         let stop_rx = stop_rx.clone();
 

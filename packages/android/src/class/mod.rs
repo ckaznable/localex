@@ -134,14 +134,24 @@ pub(crate) mod client_event {
 }
 
 #[allow(non_snake_case)]
-mod daemon_event {
-    use anyhow::Result;
+pub(crate) mod daemon_event {
+    use anyhow::{anyhow, Result};
     use jni::objects::{JClass, JObject, JValue};
     use jni::sys::{jboolean, jobject};
     use jni::JNIEnv;
+    use protocol::event::DaemonEvent;
     use protocol::peer::DaemonPeer;
 
     use super::create_DaemonPeer;
+
+    pub unsafe fn get_jdaemon_event(env: &mut JNIEnv, class: &JClass, e: DaemonEvent) -> Result<jobject> {
+        match e {
+            DaemonEvent::VerifyResult(p, result) => create_VerifyResult(env, p.to_string(), result),
+            DaemonEvent::InComingVerify(p) => create_InComingVerify(env, class, p),
+            DaemonEvent::PeerList(list) => create_PeerList(env, class, list),
+            DaemonEvent::LocalInfo(_, _) => Err(anyhow!("unreachable")),
+        }
+    }
 
     pub unsafe fn create_VerifyResult(
         env: &mut JNIEnv,
