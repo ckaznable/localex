@@ -1,9 +1,9 @@
 use anyhow::{anyhow, Result};
+use network::{new_swarm, LocalExBehaviour};
 use protocol::event::DaemonEvent;
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
-use libp2p::{identity::Keypair, Swarm, SwarmBuilder};
-use localex_daemon::behaviour::LocalExBehaviour;
+use libp2p::{identity::Keypair, Swarm};
 use tokio::{
     runtime::Runtime,
     sync::{mpsc, Mutex}, task::JoinHandle,
@@ -31,18 +31,7 @@ struct Service {
 
 impl Service {
     pub fn new(local_keypair: Keypair) -> Result<Self> {
-        let swarm = SwarmBuilder::with_existing_identity(local_keypair)
-            .with_tokio()
-            .with_tcp(
-                libp2p::tcp::Config::default(),
-                libp2p::noise::Config::new,
-                libp2p::yamux::Config::default,
-            )?
-            .with_quic()
-            .with_behaviour(LocalExBehaviour::new)?
-            .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(Duration::from_secs(30)))
-            .build();
-
+        let swarm = new_swarm(local_keypair)?;
         Ok(Self { swarm })
     }
 

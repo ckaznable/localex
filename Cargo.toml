@@ -9,6 +9,7 @@ members = [
   "packages/localex-ipc",
   "packages/localex-tui",
   "packages/logger",
+  "packages/network",
   "packages/protocol",
 ]
 

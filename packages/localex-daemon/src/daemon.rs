@@ -7,15 +7,14 @@ use libp2p::{
     identity::Keypair,
     mdns, request_response::{self, ResponseChannel},
     swarm::SwarmEvent,
-    PeerId, Swarm, SwarmBuilder,
+    PeerId, Swarm,
 };
 use localex_ipc::IPCServer;
+use network::{LocalExBehaviour, LocalExBehaviourEvent};
 use protocol::{
     auth::{AuthResponseState, LocalExAuthRequest, LocalExAuthResponse}, event::{ClientEvent, DaemonEvent}, peer::{DaemonPeer, PeerVerifyState}
 };
 use tracing::{error, info};
-
-use crate::behaviour::{LocalExBehaviour, LocalExBehaviourEvent};
 
 #[derive(Hash, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum GossipTopic {
@@ -34,18 +33,7 @@ pub struct Daemon<'a> {
 impl<'a> Daemon<'a> {
     pub fn new(local_keypair: Keypair, hostname: &'a str) -> Result<Self> {
         let server = IPCServer::new()?;
-
-        let swarm = SwarmBuilder::with_existing_identity(local_keypair)
-            .with_tokio()
-            .with_tcp(
-                libp2p::tcp::Config::default(),
-                libp2p::noise::Config::new,
-                libp2p::yamux::Config::default,
-            )?
-            .with_quic()
-            .with_behaviour(LocalExBehaviour::new)?
-            .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(Duration::from_secs(30)))
-            .build();
+        let swarm = network::new_swarm(local_keypair)?;
 
         Ok(Self {
             swarm,

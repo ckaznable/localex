@@ -3,7 +3,6 @@ use daemon::Daemon;
 use libp2p::identity::Keypair;
 use secret::SecretStore;
 
-pub mod behaviour;
 pub mod cli;
 pub mod config;
 

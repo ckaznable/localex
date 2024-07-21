@@ -1,3 +1,4 @@
+use anyhow::Result;
 use std::{io, time::Duration};
 
 use libp2p::{
@@ -6,9 +7,26 @@ use libp2p::{
     mdns,
     request_response::{self, ProtocolSupport},
     swarm::NetworkBehaviour,
-    PeerId, StreamProtocol,
+    PeerId, StreamProtocol, Swarm, SwarmBuilder,
 };
 use protocol::auth::{LocalExAuthRequest, LocalExAuthResponse};
+
+pub fn new_swarm(local_keypair: Keypair) -> Result<Swarm<LocalExBehaviour>> {
+    let swarm = SwarmBuilder::with_existing_identity(local_keypair)
+        .with_tokio()
+        .with_tcp(
+            libp2p::tcp::Config::default(),
+            libp2p::noise::Config::new,
+            libp2p::yamux::Config::default,
+        )?
+        .with_quic()
+        .with_behaviour(LocalExBehaviour::new)?
+        .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(Duration::from_secs(30)))
+        .build();
+
+    Ok(swarm)
+}
+
 
 #[derive(NetworkBehaviour)]
 pub struct LocalExBehaviour {

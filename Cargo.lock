@@ -2022,6 +2022,7 @@ dependencies = [
  "jni",
  "libp2p",
  "localex-daemon",
+ "network",
  "protocol",
  "tokio",
 ]
@@ -2049,6 +2050,7 @@ dependencies = [
  "libp2p",
  "localex-ipc",
  "logger",
+ "network",
  "protocol",
  "secret-service",
  "serde",
@@ -2294,6 +2296,16 @@ dependencies = [
  "futures",
  "libc",
  "log",
+ "tokio",
+]
+
+[[package]]
+name = "network"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "libp2p",
+ "protocol",
  "tokio",
 ]
 

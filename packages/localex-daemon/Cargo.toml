@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+network = { path = "../network/" }
 protocol = { path = "../protocol/" }
 localex-ipc = { path = "../localex-ipc/" }
 logger = { path = "../logger/" }
