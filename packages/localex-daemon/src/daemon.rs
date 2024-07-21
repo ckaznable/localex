@@ -22,7 +22,7 @@ pub enum GossipTopic {
     Hostname,
 }
 
-pub struct Deamon<'a> {
+pub struct Daemon<'a> {
     swarm: Swarm<LocalExBehaviour>,
     server: IPCServer,
     peers: HashMap<PeerId, DeamonPeer>,
@@ -31,7 +31,7 @@ pub struct Deamon<'a> {
     hostname: &'a str,
 }
 
-impl<'a> Deamon<'a> {
+impl<'a> Daemon<'a> {
     pub fn new(local_keypair: Keypair, hostname: &'a str) -> Result<Self> {
         let server = IPCServer::new()?;
 

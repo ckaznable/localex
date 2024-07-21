@@ -1,5 +1,5 @@
 use anyhow::Result;
-use deamon::Deamon;
+use daemon::Daemon;
 use libp2p::identity::Keypair;
 use secret::SecretStore;
 
@@ -7,7 +7,7 @@ pub mod behaviour;
 pub mod cli;
 pub mod config;
 
-mod deamon;
+mod daemon;
 mod secret;
 
 pub async fn main(param: config::Config) -> Result<()> {
@@ -34,7 +34,7 @@ pub async fn main(param: config::Config) -> Result<()> {
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|_| String::from("unknown"));
 
-    let mut deamon = Deamon::new(local_keypair, &_hostname)?;
+    let mut deamon = Daemon::new(local_keypair, &_hostname)?;
     deamon.listen_on()?;
     deamon.run().await?;
 

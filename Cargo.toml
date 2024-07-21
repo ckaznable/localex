@@ -1,9 +1,10 @@
 [workspace]
 resolver = "2"
 members = [
+  "packages/android",
   "packages/common",
   "packages/localex",
-  "packages/localex-deamon",
+  "packages/localex-daemon",
   "packages/localex-gui",
   "packages/localex-ipc",
   "packages/localex-tui",
