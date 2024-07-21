@@ -16,13 +16,13 @@ impl PeerVerifyState {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct DeamonPeer {
+pub struct DaemonPeer {
     pub peer_id: PeerId,
     pub state: PeerVerifyState,
     pub hostname: Option<String>,
 }
 
-impl DeamonPeer {
+impl DaemonPeer {
     pub fn new(peer_id: PeerId) -> Self {
         Self {
             peer_id,
@@ -37,7 +37,7 @@ impl DeamonPeer {
     }
 }
 
-impl Clone for DeamonPeer {
+impl Clone for DaemonPeer {
     fn clone(&self) -> Self {
         Self {
             peer_id: self.peer_id,

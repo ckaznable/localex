@@ -11,7 +11,7 @@ use libp2p::{
 };
 use localex_ipc::IPCServer;
 use protocol::{
-    auth::{AuthResponseState, LocalExAuthRequest, LocalExAuthResponse}, event::{ClientEvent, DeamonEvent}, peer::{DeamonPeer, PeerVerifyState}
+    auth::{AuthResponseState, LocalExAuthRequest, LocalExAuthResponse}, event::{ClientEvent, DeamonEvent}, peer::{DaemonPeer, PeerVerifyState}
 };
 use tracing::{error, info};
 
@@ -25,7 +25,7 @@ pub enum GossipTopic {
 pub struct Daemon<'a> {
     swarm: Swarm<LocalExBehaviour>,
     server: IPCServer,
-    peers: HashMap<PeerId, DeamonPeer>,
+    peers: HashMap<PeerId, DaemonPeer>,
     topics: HashMap<GossipTopic, TopicHash>,
     auth_channels: HashMap<PeerId, ResponseChannel<LocalExAuthResponse>>,
     hostname: &'a str,
@@ -286,7 +286,7 @@ impl<'a> Daemon<'a> {
             return;
         }
 
-        self.peers.insert(peer_id, DeamonPeer::new(peer_id));
+        self.peers.insert(peer_id, DaemonPeer::new(peer_id));
     }
 
     #[inline]
@@ -296,7 +296,7 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    async fn broadcast_peers(&self) -> Vec<DeamonPeer> {
+    async fn broadcast_peers(&self) -> Vec<DaemonPeer> {
         self.peers.values().cloned().collect()
     }
 }

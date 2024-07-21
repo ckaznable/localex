@@ -1,7 +1,7 @@
 use libp2p::PeerId;
 use serde::{Deserialize, Serialize};
 
-use crate::peer::DeamonPeer;
+use crate::peer::DaemonPeer;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub enum ClientEvent {
@@ -14,7 +14,7 @@ pub enum ClientEvent {
 #[derive(Clone, Serialize, Deserialize)]
 pub enum DeamonEvent {
     VerifyResult(PeerId, bool),
-    InComingVerify(DeamonPeer),
-    PeerList(Vec<DeamonPeer>),
+    InComingVerify(DaemonPeer),
+    PeerList(Vec<DaemonPeer>),
     LocalInfo(String, PeerId),
 }

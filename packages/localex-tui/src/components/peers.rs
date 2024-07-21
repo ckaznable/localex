@@ -1,5 +1,5 @@
 use libp2p::PeerId;
-use protocol::peer::{DeamonPeer, PeerVerifyState};
+use protocol::peer::{DaemonPeer, PeerVerifyState};
 use ratatui::{
     style::{Color, Style},
     text::{Line, Span},
@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 #[derive(Clone)]
-pub struct Peer(pub DeamonPeer);
+pub struct Peer(pub DaemonPeer);
 
 impl Peer {
     #[inline]
