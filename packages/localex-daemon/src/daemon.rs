@@ -284,7 +284,8 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    async fn broadcast_peers(&self) -> Vec<DaemonPeer> {
-        self.peers.values().cloned().collect()
+    async fn broadcast_peers(&self) {
+        let list = self.peers.values().cloned().collect();
+        self.server.broadcast(DaemonEvent::PeerList(list)).await
     }
 }
