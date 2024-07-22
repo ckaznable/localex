@@ -115,7 +115,6 @@ impl<'a> Daemon<'a> {
                 };
             }
             DisconnectPeer(peer_id) => {
-                self.swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
                 self.remove_peer(&peer_id);
             }
             RequestVerify(peer_id) => {
