@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
 use libp2p::identity::Keypair;
-use protocol::event::DaemonEvent;
+use protocol::event::{ClientEvent, DaemonEvent};
 use tokio::{runtime::Runtime, sync::{mpsc, Mutex}, task::JoinHandle};
 
 use crate::service::Service;
@@ -17,9 +17,12 @@ pub static mut SENDER: Option<ChannelSender<DaemonEvent>> = None;
 pub static mut RECEIVER: Option<ChannelReceiver<DaemonEvent>> = None;
 
 pub static mut STOP_SINGLE_SENDER: Option<ChannelSender<bool>> = None;
-pub static mut STOP_SINGLE_RECVER: Option<ChannelReceiver<bool>> = None;
+pub static mut STOP_SINGLE_RECIVER: Option<ChannelReceiver<bool>> = None;
 
-pub static mut LISTENER_HANDLE: Option<Arc<JoinHandle<Result<()>>>> = None;
+pub static mut CLIENT_EVENT_SENDER: Option<ChannelSender<ClientEvent>> = None;
+pub static mut CLIENT_EVENT_RECIVER: Option<ChannelReceiver<ClientEvent>> = None;
+
+pub static mut LISTENER_HANDLE: Option<Arc<JoinHandle<()>>> = None;
 
 pub fn get_or_create_runtime() -> Result<Arc<std::sync::Mutex<Runtime>>> {
     unsafe {
@@ -31,7 +34,7 @@ pub fn get_or_create_runtime() -> Result<Arc<std::sync::Mutex<Runtime>>> {
     }
 }
 
-pub fn get_or_create_service(keypair: Option<Keypair>) -> Result<Arc<Mutex<Service>>> {
+pub fn get_or_create_service(keypair: Option<Keypair>, hostname: Option<String>) -> Result<Arc<Mutex<Service>>> {
     unsafe {
         if keypair.is_none() && SERVICE.is_none() {
             return Err(anyhow!("can't get service before initializing"))
@@ -39,7 +42,7 @@ pub fn get_or_create_service(keypair: Option<Keypair>) -> Result<Arc<Mutex<Servi
 
         let keypair = keypair.ok_or_else(|| anyhow!("keypair is none"))?;
         SERVICE.clone().map(Ok).unwrap_or_else(|| {
-            let service = Arc::new(Mutex::new(Service::new(keypair)?));
+            let service = Arc::new(Mutex::new(Service::new(keypair, hostname.unwrap_or_else(|| String::from("unknown")))?));
             SERVICE = Some(service.clone());
             Ok(service)
         })
@@ -67,13 +70,30 @@ pub fn get_or_create_stop_single() -> Result<(ChannelSender<bool>, ChannelReceiv
     unsafe {
         STOP_SINGLE_SENDER
             .clone()
-            .zip(STOP_SINGLE_RECVER.clone())
+            .zip(STOP_SINGLE_RECIVER.clone())
             .map(Ok)
             .unwrap_or_else(|| {
                 let (tx, rx) = mpsc::channel(1);
                 let rx = Arc::new(Mutex::new(rx));
                 STOP_SINGLE_SENDER = Some(tx.clone());
-                STOP_SINGLE_RECVER = Some(rx.clone());
+                STOP_SINGLE_RECIVER = Some(rx.clone());
+
+                Ok((tx, rx))
+            })
+    }
+}
+
+pub fn get_or_create_client_event() -> Result<(ChannelSender<ClientEvent>, ChannelReceiver<ClientEvent>)> {
+    unsafe {
+        CLIENT_EVENT_SENDER
+            .clone()
+            .zip(CLIENT_EVENT_RECIVER.clone())
+            .map(Ok)
+            .unwrap_or_else(|| {
+                let (tx, rx) = mpsc::channel(16);
+                let rx = Arc::new(Mutex::new(rx));
+                CLIENT_EVENT_SENDER = Some(tx.clone());
+                CLIENT_EVENT_RECIVER = Some(rx.clone());
 
                 Ok((tx, rx))
             })

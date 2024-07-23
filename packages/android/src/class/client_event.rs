@@ -45,21 +45,21 @@ pub unsafe fn create_jverify_confirm(
     Ok(object.into_raw())
 }
 
-pub unsafe fn from_jobject(env: &mut JNIEnv, event: JObject) -> Result<ClientEvent> {
-    let class = env.get_object_class(event)?;
+pub unsafe fn from_jobject<'a>(env: &mut JNIEnv<'a>, event: JObject<'a>) -> Result<ClientEvent> {
+    let class = env.get_object_class(&event)?;
     let class_name = get_class_name(env, &class)?;
 
     match class_name.as_str() {
         "io/ckaznable/localax/localex/ClientEvent$RequestVerify" => {
-            let data = get_byte_array_field(env, event, "peerId")?;
+            let data = get_byte_array_field(env, &event, "peerId")?;
             Ok(ClientEvent::RequestVerify(PeerId::from_bytes(&data)?))
         },
         "io/ckaznable/localax/localex/ClientEvent$DisconnectPeer" => {
-            let data = get_byte_array_field(env, event, "peerId")?;
+            let data = get_byte_array_field(env, &event, "peerId")?;
             Ok(ClientEvent::DisconnectPeer(PeerId::from_bytes(&data)?))
         },
         "io/ckaznable/localax/localex/ClientEvent$VerifyConfirm" => {
-            let data = get_byte_array_field(env, event, "peerId")?;
+            let data = get_byte_array_field(env, &event, "peerId")?;
             let peer_id = PeerId::from_bytes(&data)?;
             let confirm = get_boolean_field(env, event, "confirm")?;
 
