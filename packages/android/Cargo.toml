@@ -8,9 +8,14 @@ network = { path = "../network/" }
 protocol = { path = "../protocol/" }
 anyhow = "1.0.86"
 futures = "0.3.21"
-jni = "0.21.1"
 tokio = { version = "1.38.1", features = ["full"] }
 libp2p = { git = "https://github.com/libp2p/rust-libp2p.git", rev = "1617abb3bfcf3e8663568e90a8fc4009aef04ba9", features = ["tcp", "tokio", "noise", "yamux", "macros", "gossipsub", "mdns", "request-response", "cbor", "quic", "tls"] }
+uniffi = { version = "0.28.0", features = ["tokio"] }
+thiserror = "1.0.63"
+
+[build-dependencies]
+uniffi = { version = "0.28.0", features = ["build"] }
 
 [lib]
 crate-type = ["cdylib"]
+name="localex"

@@ -3,14 +3,13 @@ use std::sync::Arc;
 use anyhow::{Result, anyhow};
 use libp2p::identity::Keypair;
 use protocol::event::{ClientEvent, DaemonEvent};
-use tokio::{runtime::Runtime, sync::{mpsc, Mutex}, task::JoinHandle};
+use tokio::sync::{mpsc, Mutex};
 
 use crate::service::Service;
 
 type ChannelSender<T> = mpsc::Sender<T>;
 type ChannelReceiver<T> = Arc<Mutex<mpsc::Receiver<T>>>;
 
-pub static mut RUNTIME: Option<Arc<std::sync::Mutex<Runtime>>> = None;
 pub static mut SERVICE: Option<Arc<Mutex<Service>>> = None;
 
 pub static mut SENDER: Option<ChannelSender<DaemonEvent>> = None;
@@ -21,18 +20,6 @@ pub static mut STOP_SINGLE_RECIVER: Option<ChannelReceiver<bool>> = None;
 
 pub static mut CLIENT_EVENT_SENDER: Option<ChannelSender<ClientEvent>> = None;
 pub static mut CLIENT_EVENT_RECIVER: Option<ChannelReceiver<ClientEvent>> = None;
-
-pub static mut LISTENER_HANDLE: Option<Arc<JoinHandle<()>>> = None;
-
-pub fn get_or_create_runtime() -> Result<Arc<std::sync::Mutex<Runtime>>> {
-    unsafe {
-        RUNTIME.clone().map(Ok).unwrap_or_else(|| {
-            let runtime = Arc::new(std::sync::Mutex::new(Runtime::new()?));
-            RUNTIME = Some(runtime.clone());
-            Ok(runtime)
-        })
-    }
-}
 
 pub fn get_or_create_service(keypair: Option<Keypair>, hostname: Option<String>) -> Result<Arc<Mutex<Service>>> {
     unsafe {
