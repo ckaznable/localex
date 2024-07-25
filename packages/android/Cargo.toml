@@ -18,4 +18,4 @@ uniffi = { version = "0.28.0", features = ["build"] }
 
 [lib]
 crate-type = ["cdylib"]
-name="localex"
+name="localax"

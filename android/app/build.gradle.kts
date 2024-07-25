@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.jetbrains.kotlin.android)
+    id("com.github.willir.rust.cargo-ndk-android") version "0.3.4"
 }
 
 android {
@@ -50,7 +51,7 @@ android {
 }
 
 dependencies {
-
+    implementation("net.java.dev.jna:jna:5.12.0@aar")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -66,4 +67,10 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+}
+
+cargoNdk {
+    targets = arrayListOf("arm64", "arm")
+    module = "../packages/android"
+    librariesNames = arrayListOf("liblocalax.so")
 }

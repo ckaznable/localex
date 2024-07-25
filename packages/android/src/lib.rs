@@ -12,9 +12,11 @@ mod error;
 mod ffi;
 
 #[uniffi::export]
-pub fn init(hostname: String, bytekey: Vec<u8>) -> Result<(), FFIError> {
-    Keypair::from_protobuf_encoding(&bytekey)
-        .map_err(anyhow::Error::from)
+pub fn init(hostname: String, bytekey: Option<Vec<u8>>) -> Result<(), FFIError> {
+    bytekey
+        .and_then(|secret| Keypair::from_protobuf_encoding(&secret).ok())
+        .or_else(|| Some(Keypair::generate_ed25519()))
+        .ok_or_else(|| anyhow::anyhow!("get keypair error"))
         .and_then(|keypair| get_or_create_service(Some(keypair), Some(hostname)))
         .and(get_or_create_channel())
         .and(get_or_create_stop_single())

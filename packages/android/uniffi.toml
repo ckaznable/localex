@@ -1,0 +1,4 @@
+[bindings.kotlin]
+package_name = "io.ckaznable.localax.rust"
+cdylib_name = "localax"
+android = true
