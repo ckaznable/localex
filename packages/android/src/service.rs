@@ -11,37 +11,27 @@ pub enum GossipTopic {
     Hostname,
 }
 
-pub struct Service {
-    swarm: Arc<Mutex<Swarm<LocalExBehaviour>>>,
-    topics: HashMap<GossipTopic, TopicHash>,
-    auth_channels: HashMap<PeerId, ResponseChannel<LocalExAuthResponse>>,
-    hostname: String,
+pub struct ServiceManager {
+    service: Arc<Mutex<Service>>,
     client_tx: mpsc::Sender<ClientEvent>,
     client_rx: Option<mpsc::Receiver<ClientEvent>>,
     quit_tx: mpsc::Sender<bool>,
     quit_rx: Option<mpsc::Receiver<bool>>,
 }
 
-impl Service {
+impl ServiceManager {
     pub fn new(local_keypair: Keypair, hostname: String) -> anyhow::Result<Self> {
-        let swarm = Arc::new(Mutex::new(new_swarm(local_keypair)?));
+        let service = Service::new(local_keypair, hostname)?;
         let (client_tx, client_rx) = mpsc::channel(16);
         let (quit_tx, quit_rx) = mpsc::channel(1);
 
         Ok(Self {
-            swarm,
-            hostname,
+            service: Arc::new(Mutex::new(service)),
             client_tx,
             client_rx: Some(client_rx),
             quit_tx,
             quit_rx: Some(quit_rx),
-            auth_channels: HashMap::new(),
-            topics: HashMap::new(),
         })
-    }
-
-    pub async fn quit(&self) {
-        let _ = self.quit_tx.send(true).await;
     }
 
     pub async fn dispatch(&self, event: ClientEvent) -> anyhow::Result<()> {
@@ -52,9 +42,37 @@ impl Service {
     }
 
     pub async fn listen(&mut self) -> anyhow::Result<()> {
-        self.listen_on().await?;
-        self.run().await?;
+        if let (Some(client_rx), Some(quit_rx)) = (self.client_rx.take(), self.quit_rx.take()) {
+            let mut guard = self.service.lock().await;
+            guard.listen_on().await?;
+            guard.run(client_rx, quit_rx).await?;
+        }
+
         Ok(())
+    }
+
+    pub async fn quit(&self) {
+        let _ = self.quit_tx.send(true).await;
+    }
+}
+
+pub struct Service {
+    swarm: Arc<Mutex<Swarm<LocalExBehaviour>>>,
+    topics: HashMap<GossipTopic, TopicHash>,
+    auth_channels: HashMap<PeerId, ResponseChannel<LocalExAuthResponse>>,
+    hostname: String,
+}
+
+impl Service {
+    pub fn new(local_keypair: Keypair, hostname: String) -> anyhow::Result<Self> {
+        let swarm = Arc::new(Mutex::new(new_swarm(local_keypair)?));
+
+        Ok(Self {
+            swarm,
+            hostname,
+            auth_channels: HashMap::new(),
+            topics: HashMap::new(),
+        })
     }
 
     pub async fn listen_on(&mut self) -> anyhow::Result<()> {
@@ -74,12 +92,8 @@ impl Service {
         Ok(())
     }
 
-    pub async fn run(&mut self) -> anyhow::Result<()> {
+    pub async fn run(&mut self, mut client_rx: mpsc::Receiver<ClientEvent>, mut quit_rx: mpsc::Receiver<bool>) -> anyhow::Result<()> {
         let swarm = self.swarm.clone();
-        let (mut client_rx, mut quit_rx) = self.client_rx
-            .take()
-            .zip(self.quit_rx.take())
-            .ok_or_else(|| anyhow::anyhow!("service are not initialized"))?;
 
         loop {
             tokio::select! {
