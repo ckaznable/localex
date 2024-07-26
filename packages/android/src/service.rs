@@ -1,10 +1,24 @@
 use std::{collections::HashMap, sync::Arc};
 
 use futures::StreamExt;
-use libp2p::{gossipsub::{self, TopicHash}, identity::Keypair, mdns, request_response::{self, ResponseChannel}, swarm::SwarmEvent, PeerId, Swarm};
+use libp2p::{
+    gossipsub::{self, TopicHash},
+    identity::Keypair,
+    mdns,
+    request_response::{self, ResponseChannel},
+    swarm::SwarmEvent,
+    PeerId, Swarm,
+};
 use network::{new_swarm, LocalExBehaviour, LocalExBehaviourEvent};
-use protocol::{auth::{AuthResponseState, LocalExAuthRequest, LocalExAuthResponse}, event::{ClientEvent, DaemonEvent}, peer::DaemonPeer};
-use tokio::{sync::{mpsc, Mutex, MutexGuard}, task::JoinHandle};
+use protocol::{
+    auth::{AuthResponseState, LocalExAuthRequest, LocalExAuthResponse},
+    event::{ClientEvent, DaemonEvent},
+    peer::DaemonPeer,
+};
+use tokio::{
+    sync::{mpsc, Mutex, MutexGuard},
+    task::JoinHandle,
+};
 
 #[derive(Hash, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum GossipTopic {
@@ -21,7 +35,11 @@ pub struct ServiceManager {
 }
 
 impl ServiceManager {
-    pub fn new(local_keypair: Keypair, hostname: String, daemon_tx: mpsc::Sender<DaemonEvent>) -> anyhow::Result<Self> {
+    pub fn new(
+        local_keypair: Keypair,
+        hostname: String,
+        daemon_tx: mpsc::Sender<DaemonEvent>,
+    ) -> anyhow::Result<Self> {
         let service = Service::new(local_keypair, hostname, daemon_tx)?;
         let (client_tx, client_rx) = mpsc::channel(16);
         let (quit_tx, quit_rx) = mpsc::channel(1);
@@ -37,7 +55,8 @@ impl ServiceManager {
     }
 
     pub async fn dispatch(&self, event: ClientEvent) -> anyhow::Result<()> {
-        self.client_tx.send(event)
+        self.client_tx
+            .send(event)
             .await
             .map(|_| ())
             .map_err(|_| anyhow::anyhow!("dispatch error"))
@@ -72,7 +91,11 @@ pub struct Service {
 }
 
 impl Service {
-    pub fn new(local_keypair: Keypair, hostname: String, daemon_tx: mpsc::Sender<DaemonEvent>) -> anyhow::Result<Self> {
+    pub fn new(
+        local_keypair: Keypair,
+        hostname: String,
+        daemon_tx: mpsc::Sender<DaemonEvent>,
+    ) -> anyhow::Result<Self> {
         let swarm = Arc::new(Mutex::new(new_swarm(local_keypair)?));
 
         Ok(Self {
@@ -87,22 +110,23 @@ impl Service {
 
     pub async fn listen_on(&mut self) -> anyhow::Result<()> {
         let mut swarm = self.swarm.lock().await;
-        swarm
-            .listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
+        swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
         swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
 
         let hostname_topic = gossipsub::IdentTopic::new("hostname-broadcaset");
-        swarm
-            .behaviour_mut()
-            .gossipsub
-            .subscribe(&hostname_topic)?;
-        let _ = self.topics
+        swarm.behaviour_mut().gossipsub.subscribe(&hostname_topic)?;
+        let _ = self
+            .topics
             .insert(GossipTopic::Hostname, hostname_topic.hash());
 
         Ok(())
     }
 
-    pub async fn run(&mut self, mut client_rx: mpsc::Receiver<ClientEvent>, mut quit_rx: mpsc::Receiver<bool>) -> anyhow::Result<()> {
+    pub async fn run(
+        &mut self,
+        mut client_rx: mpsc::Receiver<ClientEvent>,
+        mut quit_rx: mpsc::Receiver<bool>,
+    ) -> anyhow::Result<()> {
         let swarm = self.swarm.clone();
 
         loop {
@@ -140,12 +164,20 @@ impl Service {
         match event {
             VerifyConfirm(peer_id, result) => {
                 let mut swarm = self.swarm.lock().await;
-                let state = if result { AuthResponseState::Accept } else { AuthResponseState::Deny };
+                let state = if result {
+                    AuthResponseState::Accept
+                } else {
+                    AuthResponseState::Deny
+                };
+
                 if let Some(channel) = self.auth_channels.remove(&peer_id) {
-                    let _ = swarm.behaviour_mut().rr_auth.send_response(channel, LocalExAuthResponse {
-                        state,
-                        hostname: self.hostname.clone(),
-                    });
+                    let _ = swarm.behaviour_mut().rr_auth.send_response(
+                        channel,
+                        LocalExAuthResponse {
+                            state,
+                            hostname: self.hostname.clone(),
+                        },
+                    );
                 };
             }
             DisconnectPeer(peer_id) => {
@@ -153,9 +185,12 @@ impl Service {
             }
             RequestVerify(peer_id) => {
                 let mut swarm = self.swarm.lock().await;
-                swarm.behaviour_mut().rr_auth.send_request(&peer_id, LocalExAuthRequest {
-                    hostname: self.hostname.clone(),
-                });
+                swarm.behaviour_mut().rr_auth.send_request(
+                    &peer_id,
+                    LocalExAuthRequest {
+                        hostname: self.hostname.clone(),
+                    },
+                );
             }
             _ => {}
         }
@@ -179,7 +214,8 @@ impl Service {
                 let swarm = self.swarm.clone();
                 let mut swarm = swarm.lock().await;
                 for (peer_id, _) in list {
-                    self.remove_peer_with_swarm_guard(&mut swarm, &peer_id).await;
+                    self.remove_peer_with_swarm_guard(&mut swarm, &peer_id)
+                        .await;
                 }
 
                 self.send_peers().await;
@@ -224,7 +260,10 @@ impl Service {
         match event {
             Message {
                 peer,
-                message: request_response::Message::Request {channel, request, ..},
+                message:
+                    request_response::Message::Request {
+                        channel, request, ..
+                    },
             } => {
                 self.add_peer(peer).await;
                 self.auth_channels.insert(peer, channel);
@@ -232,7 +271,10 @@ impl Service {
                 let peer = self.peers.get_mut(&peer).unwrap();
                 peer.set_hostname(request.hostname);
 
-                let _ = self.daemon_tx.send(DaemonEvent::InComingVerify(peer.clone())).await;
+                let _ = self
+                    .daemon_tx
+                    .send(DaemonEvent::InComingVerify(peer.clone()))
+                    .await;
                 self.send_peers().await;
             }
             Message {
@@ -242,17 +284,17 @@ impl Service {
                 let result = response.state == AuthResponseState::Accept;
                 if result {
                     let mut swarm = self.swarm.lock().await;
-                    swarm
-                        .behaviour_mut()
-                        .gossipsub
-                        .add_explicit_peer(&peer);
+                    swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer);
                 }
 
                 self.peers
                     .get_mut(&peer)
                     .map(|p| p.set_hostname(response.hostname));
 
-                let _ = self.daemon_tx.send(DaemonEvent::VerifyResult(peer, result)).await;
+                let _ = self
+                    .daemon_tx
+                    .send(DaemonEvent::VerifyResult(peer, result))
+                    .await;
                 self.send_peers().await;
             }
             _ => {}
@@ -267,7 +309,11 @@ impl Service {
         self.remove_peer_with_swarm_guard(&mut swarm, peer_id).await;
     }
 
-    async fn remove_peer_with_swarm_guard<'a>(&mut self, swarm: &mut MutexGuard<'a, Swarm<LocalExBehaviour>>, peer_id: &PeerId) {
+    async fn remove_peer_with_swarm_guard<'a>(
+        &mut self,
+        swarm: &mut MutexGuard<'a, Swarm<LocalExBehaviour>>,
+        peer_id: &PeerId,
+    ) {
         swarm
             .behaviour_mut()
             .gossipsub
@@ -280,11 +326,12 @@ impl Service {
         self.add_peer_with_swarm_guard(&mut swarm, peer_id).await;
     }
 
-    async fn add_peer_with_swarm_guard<'a>(&mut self, swarm: &mut MutexGuard<'a, Swarm<LocalExBehaviour>>, peer_id: PeerId) {
-        swarm
-            .behaviour_mut()
-            .gossipsub
-            .add_explicit_peer(&peer_id);
+    async fn add_peer_with_swarm_guard<'a>(
+        &mut self,
+        swarm: &mut MutexGuard<'a, Swarm<LocalExBehaviour>>,
+        peer_id: PeerId,
+    ) {
+        swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
     }
 
     async fn send_peers(&self) {
