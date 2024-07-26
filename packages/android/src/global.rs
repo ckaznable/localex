@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
 use libp2p::identity::Keypair;
-use protocol::event::{ClientEvent, DaemonEvent};
+use protocol::event::DaemonEvent;
 use tokio::sync::{mpsc, Mutex};
 
 use crate::service::Service;
@@ -15,11 +15,9 @@ pub static mut SERVICE: Option<Arc<Mutex<Service>>> = None;
 pub static mut SENDER: Option<ChannelSender<DaemonEvent>> = None;
 pub static mut RECEIVER: Option<ChannelReceiver<DaemonEvent>> = None;
 
-pub static mut STOP_SINGLE_SENDER: Option<ChannelSender<bool>> = None;
-pub static mut STOP_SINGLE_RECIVER: Option<ChannelReceiver<bool>> = None;
-
-pub static mut CLIENT_EVENT_SENDER: Option<ChannelSender<ClientEvent>> = None;
-pub static mut CLIENT_EVENT_RECIVER: Option<ChannelReceiver<ClientEvent>> = None;
+pub fn get_service() -> Result<Arc<Mutex<Service>>> {
+    get_or_create_service(None, None)
+}
 
 pub fn get_or_create_service(keypair: Option<Keypair>, hostname: Option<String>) -> Result<Arc<Mutex<Service>>> {
     unsafe {
@@ -33,6 +31,12 @@ pub fn get_or_create_service(keypair: Option<Keypair>, hostname: Option<String>)
             SERVICE = Some(service.clone());
             Ok(service)
         })
+    }
+}
+
+pub fn get_daemon_sender() -> Option<ChannelSender<DaemonEvent>> {
+    unsafe {
+        SENDER.clone()
     }
 }
 
@@ -53,36 +57,3 @@ pub fn get_or_create_channel() -> Result<(ChannelSender<DaemonEvent>, ChannelRec
     }
 }
 
-pub fn get_or_create_stop_single() -> Result<(ChannelSender<bool>, ChannelReceiver<bool>)> {
-    unsafe {
-        STOP_SINGLE_SENDER
-            .clone()
-            .zip(STOP_SINGLE_RECIVER.clone())
-            .map(Ok)
-            .unwrap_or_else(|| {
-                let (tx, rx) = mpsc::channel(1);
-                let rx = Arc::new(Mutex::new(rx));
-                STOP_SINGLE_SENDER = Some(tx.clone());
-                STOP_SINGLE_RECIVER = Some(rx.clone());
-
-                Ok((tx, rx))
-            })
-    }
-}
-
-pub fn get_or_create_client_event() -> Result<(ChannelSender<ClientEvent>, ChannelReceiver<ClientEvent>)> {
-    unsafe {
-        CLIENT_EVENT_SENDER
-            .clone()
-            .zip(CLIENT_EVENT_RECIVER.clone())
-            .map(Ok)
-            .unwrap_or_else(|| {
-                let (tx, rx) = mpsc::channel(16);
-                let rx = Arc::new(Mutex::new(rx));
-                CLIENT_EVENT_SENDER = Some(tx.clone());
-                CLIENT_EVENT_RECIVER = Some(rx.clone());
-
-                Ok((tx, rx))
-            })
-    }
-}

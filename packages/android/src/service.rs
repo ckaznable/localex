@@ -1,10 +1,9 @@
 use std::{collections::HashMap, sync::Arc};
 
-use anyhow::Result;
 use futures::StreamExt;
 use libp2p::{gossipsub::{self, TopicHash}, identity::Keypair, mdns, request_response::{self, ResponseChannel}, swarm::SwarmEvent, PeerId, Swarm};
 use network::{new_swarm, LocalExBehaviour, LocalExBehaviourEvent};
-use protocol::{auth::{AuthResponseState, LocalExAuthRequest, LocalExAuthResponse}, event::ClientEvent};
+use protocol::{auth::{AuthResponseState, LocalExAuthRequest, LocalExAuthResponse}, event::{ClientEvent, DaemonEvent}};
 use tokio::sync::{mpsc, Mutex, MutexGuard};
 
 #[derive(Hash, Clone, Copy, PartialEq, Eq, Debug)]
@@ -17,26 +16,48 @@ pub struct Service {
     topics: HashMap<GossipTopic, TopicHash>,
     auth_channels: HashMap<PeerId, ResponseChannel<LocalExAuthResponse>>,
     hostname: String,
+    client_tx: mpsc::Sender<ClientEvent>,
+    client_rx: Option<mpsc::Receiver<ClientEvent>>,
+    quit_tx: mpsc::Sender<bool>,
+    quit_rx: Option<mpsc::Receiver<bool>>,
 }
 
 impl Service {
-    pub fn new(local_keypair: Keypair, hostname: String) -> Result<Self> {
+    pub fn new(local_keypair: Keypair, hostname: String) -> anyhow::Result<Self> {
         let swarm = Arc::new(Mutex::new(new_swarm(local_keypair)?));
+        let (client_tx, client_rx) = mpsc::channel(16);
+        let (quit_tx, quit_rx) = mpsc::channel(1);
+
         Ok(Self {
             swarm,
             hostname,
+            client_tx,
+            client_rx: Some(client_rx),
+            quit_tx,
+            quit_rx: Some(quit_rx),
             auth_channels: HashMap::new(),
             topics: HashMap::new(),
         })
     }
 
-    pub async fn listen(&mut self, quit_rx: Arc<Mutex<mpsc::Receiver<bool>>>, client_rx: Arc<Mutex<mpsc::Receiver<ClientEvent>>>) -> Result<()> {
+    pub async fn quit(&self) {
+        let _ = self.quit_tx.send(true).await;
+    }
+
+    pub async fn dispatch(&self, event: ClientEvent) -> anyhow::Result<()> {
+        self.client_tx.send(event)
+            .await
+            .map(|_| ())
+            .map_err(|_| anyhow::anyhow!("dispatch error"))
+    }
+
+    pub async fn listen(&mut self) -> anyhow::Result<()> {
         self.listen_on().await?;
-        self.run(quit_rx, client_rx).await;
+        self.run().await?;
         Ok(())
     }
 
-    pub async fn listen_on(&mut self) -> Result<()> {
+    pub async fn listen_on(&mut self) -> anyhow::Result<()> {
         let mut swarm = self.swarm.lock().await;
         swarm
             .listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
@@ -53,10 +74,12 @@ impl Service {
         Ok(())
     }
 
-    pub async fn run(&mut self, quit_rx: Arc<Mutex<mpsc::Receiver<bool>>>, client_rx: Arc<Mutex<mpsc::Receiver<ClientEvent>>>) {
+    pub async fn run(&mut self) -> anyhow::Result<()> {
         let swarm = self.swarm.clone();
-        let mut quit_rx_guard = quit_rx.lock().await;
-        let mut client_rx_guard = client_rx.lock().await;
+        let (mut client_rx, mut quit_rx) = self.client_rx
+            .take()
+            .zip(self.quit_rx.take())
+            .ok_or_else(|| anyhow::anyhow!("service are not initialized"))?;
 
         loop {
             tokio::select! {
@@ -70,11 +93,11 @@ impl Service {
                         };
                     }
                 } => {},
-                event = client_rx_guard.recv() => if let Some(event) = event {
+                event = client_rx.recv() => if let Some(event) = event {
                     let _ = self.handle_client_event(event).await;
                 },
-                rx = quit_rx_guard.recv()  => if rx.is_some() {
-                    break
+                rx = quit_rx.recv()  => if rx.is_some() {
+                    return Ok(())
                 },
             }
         }
@@ -88,7 +111,7 @@ impl Service {
         );
     }
 
-    async fn handle_client_event(&mut self, event: ClientEvent) -> Result<()> {
+    async fn handle_client_event(&mut self, event: ClientEvent) -> anyhow::Result<()> {
         use ClientEvent::*;
         match event {
             VerifyConfirm(peer_id, result) => {
@@ -116,7 +139,7 @@ impl Service {
         Ok(())
     }
 
-    async fn handle_mdns(&mut self, event: mdns::Event) -> Result<()> {
+    async fn handle_mdns(&mut self, event: mdns::Event) -> anyhow::Result<()> {
         use mdns::Event::*;
         match event {
             Discovered(list) => {
@@ -142,7 +165,7 @@ impl Service {
         Ok(())
     }
 
-    async fn handle_gossipsub(&mut self, event: gossipsub::Event) -> Result<()> {
+    async fn handle_gossipsub(&mut self, event: gossipsub::Event) -> anyhow::Result<()> {
         use gossipsub::Event::*;
         match event {
             Subscribed { topic, peer_id } => {
@@ -166,7 +189,7 @@ impl Service {
     async fn handle_auth(
         &mut self,
         event: request_response::Event<LocalExAuthRequest, LocalExAuthResponse>,
-    ) -> Result<()> {
+    ) -> anyhow::Result<()> {
         use request_response::Event::*;
         match event {
             Message {
