@@ -16,27 +16,27 @@ pub static mut SENDER: Option<ChannelSender<DaemonEvent>> = None;
 pub static mut RECEIVER: Option<ChannelReceiver<DaemonEvent>> = None;
 
 pub fn get_service() -> Result<Arc<Mutex<ServiceManager>>> {
-    get_or_create_service(None, None)
+    get_or_create_service(None, None, None)
 }
 
-pub fn get_or_create_service(keypair: Option<Keypair>, hostname: Option<String>) -> Result<Arc<Mutex<ServiceManager>>> {
+pub fn get_or_create_service(keypair: Option<Keypair>, hostname: Option<String>, daemon_tx: Option<mpsc::Sender<DaemonEvent>>) -> Result<Arc<Mutex<ServiceManager>>> {
     unsafe {
-        if keypair.is_none() && SERVICE.is_none() {
+        if keypair.is_none() && SERVICE.is_none() && daemon_tx.is_none() {
             return Err(anyhow!("can't get service before initializing"))
         }
 
         let keypair = keypair.ok_or_else(|| anyhow!("keypair is none"))?;
         SERVICE.clone().map(Ok).unwrap_or_else(|| {
-            let service = Arc::new(Mutex::new(ServiceManager::new(keypair, hostname.unwrap_or_else(|| String::from("unknown")))?));
+            let service = Arc::new(
+                Mutex::new(
+                    ServiceManager::new(
+                        keypair,
+                        hostname.unwrap_or_else(|| String::from("unknown")),
+                        daemon_tx.unwrap(),
+                    )?));
             SERVICE = Some(service.clone());
             Ok(service)
         })
-    }
-}
-
-pub fn get_daemon_sender() -> Option<ChannelSender<DaemonEvent>> {
-    unsafe {
-        SENDER.clone()
     }
 }
 

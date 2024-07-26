@@ -16,11 +16,10 @@ pub fn init(hostname: String, bytekey: Option<Vec<u8>>) -> Result<(), FFIError> 
     bytekey
         .and_then(|secret| Keypair::from_protobuf_encoding(&secret).ok())
         .or_else(|| Some(Keypair::generate_ed25519()))
-        .ok_or_else(|| anyhow::anyhow!("get keypair error"))
-        .and_then(|keypair| get_or_create_service(Some(keypair), Some(hostname)))
-        .and(get_or_create_channel())
+        .zip(get_or_create_channel().ok())
+        .and_then(|(keypair, (sender, _))| get_or_create_service(Some(keypair), Some(hostname), Some(sender)).ok())
+        .ok_or(FFIError::InitError)
         .map(|_| ())
-        .map_err(|_| FFIError::InitError)
 }
 
 #[uniffi::export(async_runtime = "tokio")]
