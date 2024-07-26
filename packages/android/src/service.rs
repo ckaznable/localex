@@ -4,7 +4,7 @@ use futures::StreamExt;
 use libp2p::{gossipsub::{self, TopicHash}, identity::Keypair, mdns, request_response::{self, ResponseChannel}, swarm::SwarmEvent, PeerId, Swarm};
 use network::{new_swarm, LocalExBehaviour, LocalExBehaviourEvent};
 use protocol::{auth::{AuthResponseState, LocalExAuthRequest, LocalExAuthResponse}, event::{ClientEvent, DaemonEvent}};
-use tokio::sync::{mpsc, Mutex, MutexGuard};
+use tokio::{sync::{mpsc, Mutex, MutexGuard}, task::JoinHandle};
 
 #[derive(Hash, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum GossipTopic {
@@ -17,6 +17,7 @@ pub struct ServiceManager {
     client_rx: Option<mpsc::Receiver<ClientEvent>>,
     quit_tx: mpsc::Sender<bool>,
     quit_rx: Option<mpsc::Receiver<bool>>,
+    handle: Option<JoinHandle<anyhow::Result<()>>>,
 }
 
 impl ServiceManager {
@@ -27,6 +28,7 @@ impl ServiceManager {
 
         Ok(Self {
             service: Arc::new(Mutex::new(service)),
+            handle: None,
             client_tx,
             client_rx: Some(client_rx),
             quit_tx,
@@ -43,9 +45,13 @@ impl ServiceManager {
 
     pub async fn listen(&mut self) -> anyhow::Result<()> {
         if let (Some(client_rx), Some(quit_rx)) = (self.client_rx.take(), self.quit_rx.take()) {
-            let mut guard = self.service.lock().await;
-            guard.listen_on().await?;
-            guard.run(client_rx, quit_rx).await?;
+            let service = self.service.clone();
+            self.handle = Some(tokio::spawn(async move {
+                let mut guard = service.lock().await;
+                guard.listen_on().await?;
+                guard.run(client_rx, quit_rx).await?;
+                Ok(())
+            }));
         }
 
         Ok(())
