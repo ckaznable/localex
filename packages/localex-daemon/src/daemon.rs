@@ -214,8 +214,6 @@ impl<'a> Daemon<'a> {
                     &request.hostname, peer
                 );
                 self.add_peer(peer);
-
-
                 self.auth_channels.insert(peer, channel);
 
                 let peer = self.peers.get_mut(&peer).unwrap();
