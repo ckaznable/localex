@@ -1464,6 +1464,26 @@ sealed class FfiException : kotlin.Exception() {
             get() = ""
     }
 
+    class AccessServiceBeforeInitException : FfiException() {
+        override val message
+            get() = ""
+    }
+
+    class CreateServiceException : FfiException() {
+        override val message
+            get() = ""
+    }
+
+    class GetServiceException : FfiException() {
+        override val message
+            get() = ""
+    }
+
+    class GetDaemonChannelException : FfiException() {
+        override val message
+            get() = ""
+    }
+
     class FfiConvertException : FfiException() {
         override val message
             get() = ""
@@ -1488,15 +1508,35 @@ public object FfiConverterTypeFFIError : FfiConverterRustBuffer<FfiException> {
     override fun read(buf: ByteBuffer): FfiException =
         when (buf.getInt()) {
             1 -> FfiException.InitException()
-            2 -> FfiException.FfiConvertException()
-            3 -> FfiException.FfiChannelException()
-            4 -> FfiException.Unknown()
+            2 -> FfiException.AccessServiceBeforeInitException()
+            3 -> FfiException.CreateServiceException()
+            4 -> FfiException.GetServiceException()
+            5 -> FfiException.GetDaemonChannelException()
+            6 -> FfiException.FfiConvertException()
+            7 -> FfiException.FfiChannelException()
+            8 -> FfiException.Unknown()
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
         }
 
     override fun allocationSize(value: FfiException): ULong =
         when (value) {
             is FfiException.InitException -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is FfiException.AccessServiceBeforeInitException -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is FfiException.CreateServiceException -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is FfiException.GetServiceException -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is FfiException.GetDaemonChannelException -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
             )
@@ -1523,16 +1563,32 @@ public object FfiConverterTypeFFIError : FfiConverterRustBuffer<FfiException> {
                 buf.putInt(1)
                 Unit
             }
-            is FfiException.FfiConvertException -> {
+            is FfiException.AccessServiceBeforeInitException -> {
                 buf.putInt(2)
                 Unit
             }
-            is FfiException.FfiChannelException -> {
+            is FfiException.CreateServiceException -> {
                 buf.putInt(3)
                 Unit
             }
-            is FfiException.Unknown -> {
+            is FfiException.GetServiceException -> {
                 buf.putInt(4)
+                Unit
+            }
+            is FfiException.GetDaemonChannelException -> {
+                buf.putInt(5)
+                Unit
+            }
+            is FfiException.FfiConvertException -> {
+                buf.putInt(6)
+                Unit
+            }
+            is FfiException.FfiChannelException -> {
+                buf.putInt(7)
+                Unit
+            }
+            is FfiException.Unknown -> {
+                buf.putInt(8)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
