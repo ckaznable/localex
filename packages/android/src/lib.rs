@@ -51,8 +51,7 @@ pub async fn recv() -> Result<FFIDaemonEvent, FFIError> {
 
 #[uniffi::export(async_runtime = "tokio")]
 pub async fn listen() -> Result<(), FFIError> {
-    get_service()
-        .map_err(|_| FFIError::Unknown)?
+    get_service()?
         .lock()
         .await
         .listen()
