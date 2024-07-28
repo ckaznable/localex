@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use async_trait::async_trait;
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::{
@@ -65,7 +65,8 @@ where
                 let request: I = ciborium::from_reader_with_buffer(data, &mut *read_buf)?;
                 tx.send((write, request)).await?;
             }
-            _ => return Err(anyhow!("read buffer error")),
+            Err(ref e) if e.kind() == tokio::io::ErrorKind::WouldBlock => {}
+            Err(e) => return Err(anyhow::Error::from(e)),
         }
 
         Ok(())
