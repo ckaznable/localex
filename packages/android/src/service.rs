@@ -20,6 +20,8 @@ use tokio::{
     task::JoinHandle,
 };
 
+use crate::{error::FFIError, ffi::FFIDaemonEvent};
+
 #[derive(Hash, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum GossipTopic {
     Hostname,
@@ -31,6 +33,7 @@ pub struct ServiceManager {
     client_rx: Option<mpsc::Receiver<ClientEvent>>,
     quit_tx: mpsc::Sender<bool>,
     quit_rx: Option<mpsc::Receiver<bool>>,
+    daemon_tx: mpsc::Sender<FFIDaemonEvent>,
     handle: Option<JoinHandle<anyhow::Result<()>>>,
 }
 
@@ -38,9 +41,9 @@ impl ServiceManager {
     pub fn new(
         local_keypair: Keypair,
         hostname: String,
-        daemon_tx: mpsc::Sender<DaemonEvent>,
+        daemon_tx: mpsc::Sender<FFIDaemonEvent>,
     ) -> anyhow::Result<Self> {
-        let service = Service::new(local_keypair, hostname, daemon_tx)?;
+        let service = Service::new(local_keypair, hostname, daemon_tx.clone())?;
         let (client_tx, client_rx) = mpsc::channel(16);
         let (quit_tx, quit_rx) = mpsc::channel(1);
 
@@ -51,6 +54,7 @@ impl ServiceManager {
             client_rx: Some(client_rx),
             quit_tx,
             quit_rx: Some(quit_rx),
+            daemon_tx,
         })
     }
 
@@ -65,10 +69,15 @@ impl ServiceManager {
     pub async fn listen(&mut self) -> anyhow::Result<()> {
         if let (Some(client_rx), Some(quit_rx)) = (self.client_rx.take(), self.quit_rx.take()) {
             let service = self.service.clone();
+            let daemon_tx = self.daemon_tx.clone();
             self.handle = Some(tokio::spawn(async move {
                 let mut guard = service.lock().await;
-                guard.listen_on().await?;
-                guard.run(client_rx, quit_rx).await?;
+
+                if guard.listen_on().await.is_err() {
+                    let _ = daemon_tx.send(FFIDaemonEvent::Error(FFIError::ListenLibP2PError)).await;
+                }
+
+                guard.run(client_rx, quit_rx).await;
                 Ok(())
             }));
         }
@@ -87,14 +96,14 @@ pub struct Service {
     auth_channels: HashMap<PeerId, ResponseChannel<LocalExAuthResponse>>,
     hostname: String,
     peers: HashMap<PeerId, DaemonPeer>,
-    daemon_tx: mpsc::Sender<DaemonEvent>,
+    daemon_tx: mpsc::Sender<FFIDaemonEvent>,
 }
 
 impl Service {
     pub fn new(
         local_keypair: Keypair,
         hostname: String,
-        daemon_tx: mpsc::Sender<DaemonEvent>,
+        daemon_tx: mpsc::Sender<FFIDaemonEvent>,
     ) -> anyhow::Result<Self> {
         let swarm = Arc::new(Mutex::new(new_swarm(local_keypair)?));
 
@@ -126,7 +135,7 @@ impl Service {
         &mut self,
         mut client_rx: mpsc::Receiver<ClientEvent>,
         mut quit_rx: mpsc::Receiver<bool>,
-    ) -> anyhow::Result<()> {
+    ) {
         let swarm = self.swarm.clone();
 
         loop {
@@ -145,7 +154,7 @@ impl Service {
                     let _ = self.handle_client_event(event).await;
                 },
                 rx = quit_rx.recv()  => if rx.is_some() {
-                    return Ok(())
+                    return;
                 },
             }
         }
@@ -273,7 +282,7 @@ impl Service {
 
                 let _ = self
                     .daemon_tx
-                    .send(DaemonEvent::InComingVerify(peer.clone()))
+                    .send(DaemonEvent::InComingVerify(peer.clone()).into())
                     .await;
                 self.send_peers().await;
             }
@@ -293,7 +302,7 @@ impl Service {
 
                 let _ = self
                     .daemon_tx
-                    .send(DaemonEvent::VerifyResult(peer, result))
+                    .send(DaemonEvent::VerifyResult(peer, result).into())
                     .await;
                 self.send_peers().await;
             }
@@ -336,6 +345,6 @@ impl Service {
 
     async fn send_peers(&self) {
         let list = self.peers.values().cloned().collect();
-        let _ = self.daemon_tx.send(DaemonEvent::PeerList(list)).await;
+        let _ = self.daemon_tx.send(DaemonEvent::PeerList(list).into()).await;
     }
 }

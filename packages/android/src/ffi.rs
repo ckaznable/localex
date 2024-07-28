@@ -1,6 +1,8 @@
 use libp2p::PeerId;
 use protocol::{event::{ClientEvent, DaemonEvent}, peer::{DaemonPeer, PeerVerifyState}};
 
+use crate::error::FFIError;
+
 #[derive(uniffi::Enum)]
 pub enum FFIClientEvent {
     RequestVerify(Vec<u8>),
@@ -41,6 +43,8 @@ pub enum FFIDaemonEvent {
     InComingVerify(FFIDaemonPeer),
     PeerList(Vec<FFIDaemonPeer>),
     LocalInfo(String, Vec<u8>),
+    Error(FFIError),
+    Unknown,
 }
 
 impl From<DaemonEvent> for FFIDaemonEvent  {
@@ -50,6 +54,7 @@ impl From<DaemonEvent> for FFIDaemonEvent  {
             DaemonEvent::InComingVerify(p) => Self::InComingVerify(p.into()),
             DaemonEvent::PeerList(peers) => Self::PeerList(peers.into_iter().map(|p| p.into()).collect()),
             DaemonEvent::LocalInfo(hostname, local_id) => Self::LocalInfo(hostname, local_id.to_bytes()),
+            _ => Self::Unknown,
         }
     }
 }
@@ -70,6 +75,7 @@ impl TryFrom<FFIDaemonEvent> for DaemonEvent {
                     .collect();
                 Self::PeerList(list)
             },
+            _ => Self::Unknown
         };
 
         Ok(event)

@@ -1366,6 +1366,14 @@ sealed class FfiDaemonEvent {
         companion object
     }
 
+    data class Error(
+        val v1: FfiException,
+    ) : FfiDaemonEvent() {
+        companion object
+    }
+
+    object Unknown : FfiDaemonEvent()
+
     companion object
 }
 
@@ -1390,6 +1398,11 @@ public object FfiConverterTypeFFIDaemonEvent : FfiConverterRustBuffer<FfiDaemonE
                     FfiConverterString.read(buf),
                     FfiConverterByteArray.read(buf),
                 )
+            5 ->
+                FfiDaemonEvent.Error(
+                    FfiConverterTypeFFIError.read(buf),
+                )
+            6 -> FfiDaemonEvent.Unknown
             else -> throw RuntimeException("invalid enum value, something is very wrong!!")
         }
 
@@ -1425,6 +1438,19 @@ public object FfiConverterTypeFFIDaemonEvent : FfiConverterRustBuffer<FfiDaemonE
                         FfiConverterByteArray.allocationSize(value.v2)
                 )
             }
+            is FfiDaemonEvent.Error -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterTypeFFIError.allocationSize(value.v1)
+                )
+            }
+            is FfiDaemonEvent.Unknown -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
         }
 
     override fun write(
@@ -1452,6 +1478,15 @@ public object FfiConverterTypeFFIDaemonEvent : FfiConverterRustBuffer<FfiDaemonE
                 buf.putInt(4)
                 FfiConverterString.write(value.v1, buf)
                 FfiConverterByteArray.write(value.v2, buf)
+                Unit
+            }
+            is FfiDaemonEvent.Error -> {
+                buf.putInt(5)
+                FfiConverterTypeFFIError.write(value.v1, buf)
+                Unit
+            }
+            is FfiDaemonEvent.Unknown -> {
+                buf.putInt(6)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -1484,6 +1519,11 @@ sealed class FfiException : kotlin.Exception() {
             get() = ""
     }
 
+    class ListenLibP2pException : FfiException() {
+        override val message
+            get() = ""
+    }
+
     class FfiConvertException : FfiException() {
         override val message
             get() = ""
@@ -1512,9 +1552,10 @@ public object FfiConverterTypeFFIError : FfiConverterRustBuffer<FfiException> {
             3 -> FfiException.CreateServiceException()
             4 -> FfiException.GetServiceException()
             5 -> FfiException.GetDaemonChannelException()
-            6 -> FfiException.FfiConvertException()
-            7 -> FfiException.FfiChannelException()
-            8 -> FfiException.Unknown()
+            6 -> FfiException.ListenLibP2pException()
+            7 -> FfiException.FfiConvertException()
+            8 -> FfiException.FfiChannelException()
+            9 -> FfiException.Unknown()
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
         }
 
@@ -1537,6 +1578,10 @@ public object FfiConverterTypeFFIError : FfiConverterRustBuffer<FfiException> {
                 4UL
             )
             is FfiException.GetDaemonChannelException -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is FfiException.ListenLibP2pException -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
             )
@@ -1579,16 +1624,20 @@ public object FfiConverterTypeFFIError : FfiConverterRustBuffer<FfiException> {
                 buf.putInt(5)
                 Unit
             }
-            is FfiException.FfiConvertException -> {
+            is FfiException.ListenLibP2pException -> {
                 buf.putInt(6)
                 Unit
             }
-            is FfiException.FfiChannelException -> {
+            is FfiException.FfiConvertException -> {
                 buf.putInt(7)
                 Unit
             }
-            is FfiException.Unknown -> {
+            is FfiException.FfiChannelException -> {
                 buf.putInt(8)
+                Unit
+            }
+            is FfiException.Unknown -> {
+                buf.putInt(9)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }

@@ -11,6 +11,10 @@ import android.content.Intent
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import io.ckaznable.localax.rust.FfiDaemonEvent
+import io.ckaznable.localax.rust.FfiDaemonPeer
+import io.ckaznable.localax.rust.listen
+import io.ckaznable.localax.rust.recv
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -20,6 +24,7 @@ import kotlinx.coroutines.launch
 class LocalaxService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.Default + Job())
     private val cleanupScope = CoroutineScope(Dispatchers.Default + Job())
+    private var isListeningDaemon = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -34,9 +39,20 @@ class LocalaxService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        isListeningDaemon = true
         serviceScope.launch {
             Log.d(LOG_TAG, "localax start listen")
-            io.ckaznable.localax.rust.listen()
+            listen()
+
+            while (isListeningDaemon) {
+                when (val data = recv()) {
+                    is FfiDaemonEvent.InComingVerify -> handleInComingVerify(data.v1)
+                    is FfiDaemonEvent.PeerList -> handlePeerList(data.v1)
+                    is FfiDaemonEvent.VerifyResult -> handleVerifyResult(data.v1, data.v2)
+                    is FfiDaemonEvent.Error -> Log.d(LOG_TAG, "error: " + data.v1.toString())
+                    else -> Unit
+                }
+            }
         }
         return START_STICKY
     }
@@ -68,6 +84,18 @@ class LocalaxService : Service() {
             .setContentText("Service is running...")
             .setContentIntent(pendingIntent)
             .build()
+    }
+
+    private fun handleInComingVerify(peer: FfiDaemonPeer) {
+
+    }
+
+    private fun handlePeerList(list: List<FfiDaemonPeer>) {
+        Log.d(LOG_TAG, "get peer list " + list.size)
+    }
+
+    private  fun handleVerifyResult(peerId: ByteArray, result: Boolean) {
+
     }
 
     companion object {

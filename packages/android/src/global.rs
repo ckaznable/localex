@@ -1,24 +1,23 @@
 use std::sync::Arc;
 
 use libp2p::identity::Keypair;
-use protocol::event::DaemonEvent;
 use tokio::sync::{mpsc, Mutex};
 
-use crate::{error::FFIError, service::ServiceManager};
+use crate::{error::FFIError, ffi::FFIDaemonEvent, service::ServiceManager};
 
 type ChannelSender<T> = mpsc::Sender<T>;
 type ChannelReceiver<T> = Arc<Mutex<mpsc::Receiver<T>>>;
 
 pub static mut SERVICE: Option<Arc<Mutex<ServiceManager>>> = None;
 
-pub static mut SENDER: Option<ChannelSender<DaemonEvent>> = None;
-pub static mut RECEIVER: Option<ChannelReceiver<DaemonEvent>> = None;
+pub static mut SENDER: Option<ChannelSender<FFIDaemonEvent>> = None;
+pub static mut RECEIVER: Option<ChannelReceiver<FFIDaemonEvent>> = None;
 
 pub fn get_service() -> Result<Arc<Mutex<ServiceManager>>, FFIError> {
     get_or_create_service(None, None, None)
 }
 
-pub fn get_or_create_service(keypair: Option<Keypair>, hostname: Option<String>, daemon_tx: Option<mpsc::Sender<DaemonEvent>>) -> Result<Arc<Mutex<ServiceManager>>, FFIError> {
+pub fn get_or_create_service(keypair: Option<Keypair>, hostname: Option<String>, daemon_tx: Option<mpsc::Sender<FFIDaemonEvent>>) -> Result<Arc<Mutex<ServiceManager>>, FFIError> {
     unsafe {
         if keypair.is_none() && SERVICE.is_none() && daemon_tx.is_none() {
             return Err(FFIError::AccessServiceBeforeInitError)
@@ -39,7 +38,7 @@ pub fn get_or_create_service(keypair: Option<Keypair>, hostname: Option<String>,
     }
 }
 
-pub fn get_or_create_channel() -> Result<(ChannelSender<DaemonEvent>, ChannelReceiver<DaemonEvent>), FFIError> {
+pub fn get_or_create_channel() -> Result<(ChannelSender<FFIDaemonEvent>, ChannelReceiver<FFIDaemonEvent>), FFIError> {
     unsafe {
         SENDER
             .clone()

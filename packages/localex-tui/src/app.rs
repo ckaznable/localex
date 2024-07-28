@@ -129,6 +129,7 @@ impl App {
                     self.state.list_state.select(Some(0))
                 }
             }
+            _ => {}
         }
     }
 

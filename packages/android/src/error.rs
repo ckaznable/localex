@@ -10,6 +10,8 @@ pub enum FFIError {
     GetServiceError,
     #[error("get daemon channel error")]
     GetDaemonChannelError,
+    #[error("listen libp2p error")]
+    ListenLibP2PError,
     #[error("ffi convert error")]
     FFIConvertError,
     #[error("ffi channel error")]

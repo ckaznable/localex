@@ -17,4 +17,5 @@ pub enum DaemonEvent {
     InComingVerify(DaemonPeer),
     PeerList(Vec<DaemonPeer>),
     LocalInfo(String, PeerId),
+    Unknown,
 }

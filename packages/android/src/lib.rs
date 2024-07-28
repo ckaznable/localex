@@ -45,7 +45,6 @@ pub async fn recv() -> Result<FFIDaemonEvent, FFIError> {
         .recv()
         .await
         .ok_or(FFIError::Unknown)
-        .map(FFIDaemonEvent::from)
         .map_err(|_| FFIError::FFIConvertError)
 }
 
