@@ -1,4 +1,8 @@
-use std::{collections::HashMap, path::PathBuf, time::Duration};
+use std::{
+    collections::{BTreeMap, HashMap},
+    path::PathBuf,
+    time::Duration,
+};
 
 use anyhow::Result;
 use futures::StreamExt;
@@ -27,7 +31,7 @@ pub enum GossipTopic {
 pub struct Daemon<'a> {
     swarm: Swarm<LocalExBehaviour>,
     server: IPCServer,
-    peers: HashMap<PeerId, DaemonPeer>,
+    peers: BTreeMap<PeerId, DaemonPeer>,
     topics: HashMap<GossipTopic, TopicHash>,
     auth_channels: HashMap<PeerId, ResponseChannel<LocalExAuthResponse>>,
     hostname: &'a str,
@@ -42,7 +46,7 @@ impl<'a> Daemon<'a> {
             swarm,
             server,
             hostname,
-            peers: HashMap::new(),
+            peers: BTreeMap::new(),
             topics: HashMap::new(),
             auth_channels: HashMap::new(),
         })
