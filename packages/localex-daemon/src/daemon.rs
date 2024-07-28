@@ -281,7 +281,7 @@ impl<'a> Daemon<'a> {
         }
     }
 
-    async fn broadcast_peers(&self) {
+    async fn broadcast_peers(&mut self) {
         let list = self.peers.values().cloned().collect();
         self.server.broadcast(DaemonEvent::PeerList(list)).await
     }
