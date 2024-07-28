@@ -1,12 +1,29 @@
 use std::collections::HashMap;
 
 use anyhow::Result;
+use futures::executor::block_on;
 use libp2p::identity::Keypair;
 use secret_service::{EncryptionType, SecretService};
 
 const SECRET_LABEL: &str = "LocalEx";
 const ATTR_KEY: &str = "localex";
 const PRIVATE_KEY_ATTR: (&str, &str) = (ATTR_KEY, "keypair");
+
+pub trait LocalStore {
+    fn get_local_key(&self) -> Option<Keypair>;
+    fn save_local_key(&self, keypair: &Keypair) -> Result<()>;
+}
+
+pub struct DefaultStore;
+impl LocalStore for DefaultStore {
+    fn get_local_key(&self) -> Option<Keypair> {
+        None
+    }
+
+    fn save_local_key(&self, _: &Keypair) -> Result<()> {
+        Ok(())
+    }
+}
 
 pub struct SecretStore<'a> {
     service: SecretService<'a>,
@@ -54,17 +71,23 @@ impl<'a> SecretStore<'a> {
     async fn save_secret_with_one_attr(&self, attr: (&str, &str), secret: &[u8]) -> Result<()> {
         self.save_secret(HashMap::from([attr]), secret).await
     }
+}
 
+impl<'a> LocalStore for SecretStore<'a> {
     #[inline]
-    pub async fn get_local_key(&self) -> Option<Keypair> {
-        self.get_secret_with_one_attr(PRIVATE_KEY_ATTR).await
-            .and_then(|secret| Keypair::from_protobuf_encoding(&secret).ok())
-            .or_else(|| Some(Keypair::generate_ed25519()))
+    fn get_local_key(&self) -> Option<Keypair> {
+        block_on(async {
+            self.get_secret_with_one_attr(PRIVATE_KEY_ATTR).await
+                .and_then(|secret| Keypair::from_protobuf_encoding(&secret).ok())
+                .or_else(|| Some(Keypair::generate_ed25519()))
+        })
     }
 
     #[inline]
-    pub async fn save_local_key(&self, keypair: &Keypair) -> Result<()> {
-        let key = keypair.to_protobuf_encoding()?;
-        self.save_secret_with_one_attr(PRIVATE_KEY_ATTR, &key).await
+    fn save_local_key(&self, keypair: &Keypair) -> Result<()> {
+        block_on(async {
+            let key = keypair.to_protobuf_encoding()?;
+            self.save_secret_with_one_attr(PRIVATE_KEY_ATTR, &key).await
+        })
     }
 }

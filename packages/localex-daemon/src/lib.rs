@@ -1,7 +1,7 @@
 use anyhow::Result;
 use daemon::Daemon;
 use libp2p::identity::Keypair;
-use secret::SecretStore;
+use secret::{DefaultStore, LocalStore, SecretStore};
 
 pub mod cli;
 pub mod config;
@@ -15,18 +15,22 @@ pub async fn main(param: config::Config) -> Result<()> {
         stdout: false,
     })?;
 
-    let store = SecretStore::new().await?;
+    let store: Box<dyn LocalStore> = if param.no_save {
+        Box::new(DefaultStore)
+    } else {
+        Box::new(SecretStore::new().await?)
+    };
+
     let local_keypair = if param.new_profile {
         Keypair::generate_ed25519()
     } else {
         store
             .get_local_key()
-            .await
             .expect("can't get libp2p keypair")
     };
 
     if !param.no_save {
-        store.save_local_key(&local_keypair).await?;
+        store.save_local_key(&local_keypair)?;
     }
 
     let _hostname = hostname::get()

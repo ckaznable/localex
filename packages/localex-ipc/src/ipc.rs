@@ -1,4 +1,4 @@
-use std::{path::Path, sync::Arc};
+use std::{path::{Path, PathBuf}, sync::Arc};
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -12,8 +12,6 @@ use tokio::{
     task::JoinHandle,
 };
 use tracing::error;
-
-use crate::sock;
 
 thread_local! {
     static DATA_BUF: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::with_capacity(1024 * 256)));
@@ -107,11 +105,11 @@ where
         Ok(handle)
     }
 
-    async fn listen(&self) -> Result<JoinHandle<Result<()>>> {
+    async fn listen(&self, sock_path: PathBuf) -> Result<JoinHandle<Result<()>>> {
         let tx = self.ipc_tx();
 
         let handle = tokio::spawn(async move {
-            let listener = UnixListener::bind(sock::get_sock_mount_path())?;
+            let listener = UnixListener::bind(sock_path)?;
             loop {
                 if let Ok((stream, _)) = listener.accept().await {
                     let (read, write) = stream.into_split();

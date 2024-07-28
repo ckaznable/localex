@@ -46,7 +46,7 @@ impl IPCServer {
     }
 
     pub async fn prepare(&mut self) -> Result<()> {
-        self.listen_handle = Some(self.listen().await?);
+        self.listen_handle = Some(self.listen(self.sock.clone()).await?);
         Ok(())
     }
 
@@ -109,7 +109,7 @@ pub struct IPCClient {
 impl IPCClient {
     pub async fn new(sock_path: Option<PathBuf>) -> Result<Self> {
         let sock_path = sock_path.unwrap_or_else(|| sock::get_sock_mount_path().into());
-        if !sock_path.exists() {
+        if sock_path.exists() {
             let (tx, rx) = Self::get_ipc_channel();
             let stream = Self::connect(&sock_path).await?;
             let (read, write) = stream.into_split();
