@@ -126,6 +126,10 @@ impl App {
                     .unwrap_or_else(|| AppUIState::InCommingVerify(Peer(peer)));
             }
             PeerList(peers) => {
+                if peers.len() > self.state.peers.len() {
+                    info!("received {} new peers", peers.len() - self.state.peers.len());
+                }
+
                 self.state.peers = peers.into_iter().map(Peer).collect();
                 if self.state.list_state.selected().is_none() && !self.state.peers.is_empty() {
                     self.state.list_state.select(Some(0))
