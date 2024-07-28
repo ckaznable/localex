@@ -5,14 +5,17 @@ use futures::StreamExt;
 use libp2p::{
     gossipsub::{self, TopicHash},
     identity::Keypair,
-    mdns, request_response::{self, ResponseChannel},
+    mdns,
+    request_response::{self, ResponseChannel},
     swarm::SwarmEvent,
     PeerId, Swarm,
 };
 use localex_ipc::IPCServer;
 use network::{LocalExBehaviour, LocalExBehaviourEvent};
 use protocol::{
-    auth::{AuthResponseState, LocalExAuthRequest, LocalExAuthResponse}, event::{ClientEvent, DaemonEvent}, peer::{DaemonPeer, PeerVerifyState}
+    auth::{AuthResponseState, LocalExAuthRequest, LocalExAuthResponse},
+    event::{ClientEvent, DaemonEvent},
+    peer::{DaemonPeer, PeerVerifyState},
 };
 use tracing::{error, info};
 
@@ -103,15 +106,21 @@ impl<'a> Daemon<'a> {
                 let mut state = AuthResponseState::Deny;
                 if result {
                     self.verified(&peer_id);
-                    self.swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
+                    self.swarm
+                        .behaviour_mut()
+                        .gossipsub
+                        .add_explicit_peer(&peer_id);
                     state = AuthResponseState::Accept;
                 }
 
                 if let Some(channel) = self.auth_channels.remove(&peer_id) {
-                    let _ =self.swarm.behaviour_mut().rr_auth.send_response(channel, LocalExAuthResponse {
-                        state,
-                        hostname: String::from(self.hostname),
-                    });
+                    let _ = self.swarm.behaviour_mut().rr_auth.send_response(
+                        channel,
+                        LocalExAuthResponse {
+                            state,
+                            hostname: String::from(self.hostname),
+                        },
+                    );
                 };
             }
             DisconnectPeer(peer_id) => {
@@ -119,9 +128,12 @@ impl<'a> Daemon<'a> {
             }
             RequestVerify(peer_id) => {
                 info!("send verification request to {}", peer_id);
-                self.swarm.behaviour_mut().rr_auth.send_request(&peer_id, LocalExAuthRequest {
-                    hostname: String::from(self.hostname),
-                });
+                self.swarm.behaviour_mut().rr_auth.send_request(
+                    &peer_id,
+                    LocalExAuthRequest {
+                        hostname: String::from(self.hostname),
+                    },
+                );
             }
             RequestLocalInfo => {
                 self.server
@@ -219,7 +231,9 @@ impl<'a> Daemon<'a> {
                 let peer = self.peers.get_mut(&peer).unwrap();
                 peer.set_hostname(request.hostname);
 
-                self.server.broadcast(DaemonEvent::InComingVerify(peer.clone())).await;
+                self.server
+                    .broadcast(DaemonEvent::InComingVerify(peer.clone()))
+                    .await;
                 self.broadcast_peers().await;
             }
             Message {
@@ -244,7 +258,9 @@ impl<'a> Daemon<'a> {
                     .get_mut(&peer)
                     .map(|p| p.set_hostname(response.hostname));
 
-                self.server.broadcast(DaemonEvent::VerifyResult(peer, result)).await;
+                self.server
+                    .broadcast(DaemonEvent::VerifyResult(peer, result))
+                    .await;
                 self.broadcast_peers().await;
             }
             _ => {}
