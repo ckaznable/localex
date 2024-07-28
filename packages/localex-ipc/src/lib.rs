@@ -55,13 +55,21 @@ impl IPCServer {
         self.send_to_stream(stream, &msg).await
     }
 
-    pub async fn broadcast(&self, msg: DaemonEvent) {
+    pub async fn broadcast(&mut self, msg: DaemonEvent) {
         let msg = IPCEventResponse::from(msg);
-        for s in self.id_map.values() {
+        let mut disconnect_stream = vec![];
+        for (k, s) in self.id_map.iter() {
             if let Err(e) = self.send_to_stream(s, &msg).await {
+                disconnect_stream.push(k.clone());
                 error!("send msg error: {e:?}");
             }
         }
+
+        disconnect_stream
+            .iter()
+            .for_each(|k| {
+                self.id_map.remove(k);
+            });
     }
 
     pub async fn recv(&mut self) -> ClientEvent {
