@@ -2,7 +2,7 @@ pub mod event;
 pub mod ipc;
 pub mod sock;
 
-use std::{collections::HashMap, fs, sync::Arc};
+use std::{collections::HashMap, fs, path::PathBuf, sync::Arc};
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -24,17 +24,21 @@ pub struct IPCServer {
     rx: mpsc::Receiver<IPCMsgPack<RequestFromClient>>,
     id_map: HashMap<String, Arc<OwnedWriteHalf>>,
     listen_handle: Option<JoinHandle<Result<()>>>,
+    sock: PathBuf,
 }
 
 impl IPCServer {
-    pub fn new() -> Result<Self> {
-        if sock::is_sock_exist() {
+    pub fn new(sock_path: Option<PathBuf>) -> Result<Self> {
+        let sock_path = sock_path.unwrap_or_else(|| sock::get_sock_mount_path().into());
+
+        if sock_path.exists() {
             Err(anyhow!("application has already running"))
         } else {
             let (tx, rx) = Self::get_ipc_channel();
             Ok(Self {
                 tx,
                 rx,
+                sock: sock_path,
                 id_map: HashMap::new(),
                 listen_handle: None,
             })
@@ -81,7 +85,7 @@ impl IPC<RequestFromClient, RequestFromServer> for IPCServer {
 impl Drop for IPCServer {
     fn drop(&mut self) {
         self.id_map.drain().for_each(|(_, s)| drop(s));
-        let _ = fs::remove_file(sock::get_sock_mount_path());
+        let _ = fs::remove_file(&self.sock);
     }
 }
 
@@ -95,10 +99,11 @@ pub struct IPCClient {
 }
 
 impl IPCClient {
-    pub async fn new() -> Result<Self> {
-        if sock::is_sock_exist() {
+    pub async fn new(sock_path: Option<PathBuf>) -> Result<Self> {
+        let sock_path = sock_path.unwrap_or_else(|| sock::get_sock_mount_path().into());
+        if !sock_path.exists() {
             let (tx, rx) = Self::get_ipc_channel();
-            let stream = Self::connect().await?;
+            let stream = Self::connect(&sock_path).await?;
             let (read, write) = stream.into_split();
 
             Ok(Self {

@@ -14,6 +14,6 @@ pub async fn main(param: config::Config) -> Result<()> {
         stdout: false,
     })?;
 
-    let mut tui = app::App::new().await?;
+    let mut tui = app::App::new(param.sock).await?;
     tui.run().await
 }

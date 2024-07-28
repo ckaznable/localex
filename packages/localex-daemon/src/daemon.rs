@@ -1,4 +1,4 @@
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, path::PathBuf, time::Duration};
 
 use anyhow::Result;
 use futures::StreamExt;
@@ -31,8 +31,8 @@ pub struct Daemon<'a> {
 }
 
 impl<'a> Daemon<'a> {
-    pub fn new(local_keypair: Keypair, hostname: &'a str) -> Result<Self> {
-        let server = IPCServer::new()?;
+    pub fn new(local_keypair: Keypair, hostname: &'a str, sock: Option<PathBuf>) -> Result<Self> {
+        let server = IPCServer::new(sock)?;
         let swarm = network::new_swarm(local_keypair)?;
 
         Ok(Self {

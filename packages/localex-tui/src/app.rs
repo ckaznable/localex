@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use anyhow::Result;
 use crossterm::{
     self, cursor,
@@ -48,8 +50,8 @@ pub struct App {
 }
 
 impl App {
-    pub async fn new() -> Result<Self> {
-        let client = IPCClient::new().await?;
+    pub async fn new(sock: Option<PathBuf>) -> Result<Self> {
+        let client = IPCClient::new(sock).await?;
 
         // setup terminal
         enable_raw_mode()?;

@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::Parser;
 
 #[derive(Parser, Clone)]
@@ -11,4 +13,7 @@ pub struct Cli {
 
     #[arg(long)]
     pub log_file_name: Option<String>,
+
+    #[arg(long)]
+    pub sock: Option<PathBuf>,
 }

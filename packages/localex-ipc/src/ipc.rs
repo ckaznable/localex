@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -82,8 +82,8 @@ where
         Ok(())
     }
 
-    async fn connect() -> Result<UnixStream> {
-        UnixStream::connect(sock::get_sock_connect_path())
+    async fn connect(sock: &Path) -> Result<UnixStream> {
+        UnixStream::connect(sock)
             .await
             .map_err(anyhow::Error::from)
     }
