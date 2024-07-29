@@ -5,7 +5,7 @@ use std::{
 };
 
 use anyhow::Result;
-use futures::StreamExt;
+use futures::{executor::block_on, StreamExt};
 use libp2p::{
     gossipsub::{self, TopicHash},
     identity::Keypair,
@@ -21,6 +21,7 @@ use protocol::{
     event::{ClientEvent, DaemonEvent},
     peer::{DaemonPeer, PeerVerifyState},
 };
+use tokio::sync::mpsc;
 use tracing::{error, info};
 
 #[derive(Hash, Clone, Copy, PartialEq, Eq, Debug)]
@@ -35,12 +36,22 @@ pub struct Daemon<'a> {
     topics: HashMap<GossipTopic, TopicHash>,
     auth_channels: HashMap<PeerId, ResponseChannel<LocalExAuthResponse>>,
     hostname: &'a str,
+    ctrlc_rx: mpsc::Receiver<()>,
 }
 
 impl<'a> Daemon<'a> {
     pub fn new(local_keypair: Keypair, hostname: &'a str, sock: Option<PathBuf>) -> Result<Self> {
         let server = IPCServer::new(sock)?;
         let swarm = network::new_swarm(local_keypair)?;
+
+        let (tx, rx) = mpsc::channel(1);
+
+        ctrlc::set_handler(move || {
+            block_on(async {
+                tx.send(()).await
+            }).expect("close application error");
+        })
+            .expect("Error setting Ctrl-C handler");
 
         Ok(Self {
             swarm,
@@ -49,6 +60,7 @@ impl<'a> Daemon<'a> {
             peers: BTreeMap::new(),
             topics: HashMap::new(),
             auth_channels: HashMap::new(),
+            ctrlc_rx: rx,
         })
     }
 
@@ -81,6 +93,10 @@ impl<'a> Daemon<'a> {
                     if let Err(e) = self.handle_client_event(event).await {
                         error!("client event error: {e:?}");
                     }
+                },
+                _ = self.ctrlc_rx.recv() => {
+                    self.server.release();
+                    return Ok(())
                 },
                 swarm_event = self.swarm.select_next_some() => if let SwarmEvent::Behaviour(event) = swarm_event {
                     match event {

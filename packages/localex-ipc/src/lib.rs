@@ -77,6 +77,11 @@ impl IPCServer {
         self.id_map.insert(data.client_id, stream);
         data.event
     }
+
+    pub fn release(&mut self) {
+        self.id_map.drain().for_each(|(_, s)| drop(s));
+        let _ = fs::remove_file(&self.sock);
+    }
 }
 
 #[async_trait]
@@ -92,8 +97,7 @@ impl IPC<RequestFromClient, RequestFromServer> for IPCServer {
 
 impl Drop for IPCServer {
     fn drop(&mut self) {
-        self.id_map.drain().for_each(|(_, s)| drop(s));
-        let _ = fs::remove_file(&self.sock);
+        self.release();
     }
 }
 
