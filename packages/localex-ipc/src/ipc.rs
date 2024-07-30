@@ -14,7 +14,6 @@ use tokio::{
 use tracing::error;
 
 thread_local! {
-    static DATA_BUF: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::with_capacity(1024 * 256)));
     static WRITER_BUF: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::with_capacity(1024 * 256)));
     static READER_BUF: Arc<Mutex<[u8; 1024 * 128]>> = Arc::new(Mutex::new([0u8; 1024 * 128]));
 }
@@ -50,13 +49,12 @@ where
     ) -> Result<()> {
         read.readable().await?;
 
-        let buffer = DATA_BUF.with(|d| d.clone());
-        let mut buffer = buffer.lock().await;
+        let mut buffer = Vec::with_capacity(1024 * 1024 * 8);
 
         let read_buf = READER_BUF.with(|r| r.clone());
         let mut read_buf = read_buf.lock().await;
 
-        match read.try_read_buf(&mut *buffer) {
+        match read.try_read_buf(&mut buffer) {
             Ok(0) => return Ok(()),
             Ok(n) => {
                 let data = &buffer[..n];
@@ -74,6 +72,7 @@ where
         let writer_buf = WRITER_BUF.with(|w| w.clone());
         let mut writer_buf = writer_buf.lock().await;
 
+        writer_buf.clear();
         ciborium::ser::into_writer(msg, &mut *writer_buf)?;
         stream.writable().await?;
         stream.try_write(&writer_buf)?;
