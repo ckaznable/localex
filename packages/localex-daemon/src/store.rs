@@ -33,22 +33,27 @@ impl DaemonDataStore for DefaultStore {}
 impl LocalKeyStore for DefaultStore {}
 
 impl PiarPeersStore for DefaultStore {
+    #[inline]
     fn get_peers(&mut self) -> &BTreeMap<PeerId, DaemonPeer> {
         &self.0
     }
 
+    #[inline]
     fn get_peers_mut(&mut self) -> &mut BTreeMap<PeerId, DaemonPeer> {
         &mut self.0
     }
 
+    #[inline]
     fn save_peers(&mut self) -> Result<()> {
         Ok(())
     }
 
+    #[inline]
     fn add_peer(&mut self, peer: DaemonPeer) {
         self.0.insert(peer.peer_id, peer);
     }
 
+    #[inline]
     fn remove_peer(&mut self, peer: &PeerId) {
         self.0.remove(peer);
     }
@@ -145,6 +150,7 @@ impl<'a> LocalKeyStore for SecretStore<'a> {
 }
 
 impl<'a> PiarPeersStore for SecretStore<'a> {
+    #[inline]
     fn get_peers_mut(&mut self) -> &mut BTreeMap<PeerId, DaemonPeer> {
         block_on(async {
             self.peers_init().await;
@@ -153,6 +159,7 @@ impl<'a> PiarPeersStore for SecretStore<'a> {
         &mut self.peers
     }
 
+    #[inline]
     fn get_peers(&mut self) -> &BTreeMap<PeerId, DaemonPeer> {
         block_on(async {
             self.peers_init().await;
@@ -161,6 +168,7 @@ impl<'a> PiarPeersStore for SecretStore<'a> {
         &self.peers
     }
 
+    #[inline]
     fn save_peers(&mut self) -> Result<()> {
         block_on(async {
             let mut data = Vec::with_capacity(1024);
@@ -169,10 +177,12 @@ impl<'a> PiarPeersStore for SecretStore<'a> {
         })
     }
 
+    #[inline]
     fn add_peer(&mut self, peer: DaemonPeer) {
         self.peers.insert(peer.peer_id, peer);
     }
 
+    #[inline]
     fn remove_peer(&mut self, peer_id: &PeerId) {
         self.peers.remove(peer_id);
     }
