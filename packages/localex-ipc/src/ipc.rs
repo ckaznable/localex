@@ -52,7 +52,7 @@ where
     ) -> Result<()> {
         read.readable().await?;
 
-        let mut buffer = Vec::with_capacity(1024 * 1024 * 8);
+        let mut buffer = Vec::with_capacity(1024 * 1024);
 
         let read_buf = READER_BUF.with(|r| r.clone());
         let mut read_buf = read_buf.lock().await;
