@@ -1,13 +1,13 @@
 use anyhow::Result;
 use daemon::Daemon;
 use libp2p::identity::Keypair;
-use secret::{DaemonDataStore, DefaultStore, SecretStore};
+use store::{DaemonDataStore, DefaultStore, SecretStore};
 
 pub mod cli;
 pub mod config;
 
 mod daemon;
-mod secret;
+mod store;
 
 pub async fn main(param: config::Config) -> Result<()> {
     logger::init_logger(logger::LoggerConfig {

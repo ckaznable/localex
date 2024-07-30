@@ -24,7 +24,7 @@ use protocol::{
 use tokio::sync::mpsc;
 use tracing::{error, info};
 
-use crate::secret::DaemonDataStore;
+use crate::store::DaemonDataStore;
 
 #[derive(Hash, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum GossipTopic {
