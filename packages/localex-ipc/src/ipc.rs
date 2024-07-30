@@ -1,4 +1,7 @@
-use std::{path::{Path, PathBuf}, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -80,9 +83,7 @@ where
     }
 
     async fn connect(sock: &Path) -> Result<UnixStream> {
-        UnixStream::connect(sock)
-            .await
-            .map_err(anyhow::Error::from)
+        UnixStream::connect(sock).await.map_err(anyhow::Error::from)
     }
 
     async fn wait_for_stream(
@@ -94,7 +95,8 @@ where
 
         let handle = tokio::spawn(async move {
             loop {
-                if let Err(err) = Self::handle_stream(tx.clone(), read.clone(), write.clone()).await {
+                if let Err(err) = Self::handle_stream(tx.clone(), read.clone(), write.clone()).await
+                {
                     error!("{err:?}");
                     continue;
                 }
@@ -112,7 +114,9 @@ where
             loop {
                 if let Ok((stream, _)) = listener.accept().await {
                     let (read, write) = stream.into_split();
-                    if let Err(err) = Self::handle_stream(tx.clone(), Arc::new(read), Arc::new(write)).await {
+                    if let Err(err) =
+                        Self::handle_stream(tx.clone(), Arc::new(read), Arc::new(write)).await
+                    {
                         error!("{err:?}");
                         continue;
                     }
