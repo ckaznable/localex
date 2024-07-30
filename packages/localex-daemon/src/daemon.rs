@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::HashMap,
     path::PathBuf,
     time::Duration,
 };
@@ -24,6 +24,8 @@ use protocol::{
 use tokio::sync::mpsc;
 use tracing::{error, info};
 
+use crate::secret::DaemonDataStore;
+
 #[derive(Hash, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum GossipTopic {
     Hostname,
@@ -32,32 +34,30 @@ pub enum GossipTopic {
 pub struct Daemon<'a> {
     swarm: Swarm<LocalExBehaviour>,
     server: IPCServer,
-    peers: BTreeMap<PeerId, DaemonPeer>,
     topics: HashMap<GossipTopic, TopicHash>,
     auth_channels: HashMap<PeerId, ResponseChannel<LocalExAuthResponse>>,
     hostname: &'a str,
     ctrlc_rx: mpsc::Receiver<()>,
+    store: Box<dyn DaemonDataStore>,
 }
 
 impl<'a> Daemon<'a> {
-    pub fn new(local_keypair: Keypair, hostname: &'a str, sock: Option<PathBuf>) -> Result<Self> {
+    pub fn new(local_keypair: Keypair, hostname: &'a str, sock: Option<PathBuf>, store: Box<dyn DaemonDataStore>) -> Result<Self> {
         let server = IPCServer::new(sock)?;
         let swarm = network::new_swarm(local_keypair)?;
 
         let (tx, rx) = mpsc::channel(1);
-
-        ctrlc::set_handler(move || {
+        let _ = ctrlc::set_handler(move || {
             block_on(async {
                 tx.send(()).await
             }).expect("close application error");
-        })
-            .expect("Error setting Ctrl-C handler");
+        });
 
         Ok(Self {
             swarm,
             server,
             hostname,
-            peers: BTreeMap::new(),
+            store,
             topics: HashMap::new(),
             auth_channels: HashMap::new(),
             ctrlc_rx: rx,
@@ -200,7 +200,7 @@ impl<'a> Daemon<'a> {
                 }
             }
             Message { message, .. } => {
-                if let Some(peer) = message.source.and_then(|peer| self.peers.get_mut(&peer)) {
+                if let Some(peer) = message.source.and_then(|peer| self.store.get_peers_mut().get_mut(&peer)) {
                     let hostname =
                         String::from_utf8(message.data).unwrap_or_else(|_| String::from("unknown"));
                     info!("receive hostname broadcaset {hostname}");
@@ -248,7 +248,7 @@ impl<'a> Daemon<'a> {
                 self.add_peer(peer);
                 self.auth_channels.insert(peer, channel);
 
-                let peer = self.peers.get_mut(&peer).unwrap();
+                let peer = self.store.get_peers_mut().get_mut(&peer).unwrap();
                 peer.set_hostname(request.hostname);
 
                 self.server
@@ -274,9 +274,11 @@ impl<'a> Daemon<'a> {
                         .add_explicit_peer(&peer);
                 }
 
-                self.peers
+                self.store
+                    .get_peers_mut()
                     .get_mut(&peer)
                     .map(|p| p.set_hostname(response.hostname));
+                let _ = self.store.save_peers();
 
                 self.server
                     .broadcast(DaemonEvent::VerifyResult(peer, result))
@@ -290,7 +292,7 @@ impl<'a> Daemon<'a> {
     }
 
     fn remove_peer(&mut self, peer_id: &PeerId) {
-        self.peers.remove(peer_id);
+        self.store.remove_peer(peer_id);
         self.swarm
             .behaviour_mut()
             .gossipsub
@@ -303,22 +305,18 @@ impl<'a> Daemon<'a> {
             .gossipsub
             .add_explicit_peer(&peer_id);
 
-        if self.peers.contains_key(&peer_id) {
-            return;
-        }
-
-        self.peers.insert(peer_id, DaemonPeer::new(peer_id));
+        self.store.add_peer(DaemonPeer::new(peer_id));
     }
 
     #[inline]
     fn verified(&mut self, peer_id: &PeerId) {
-        if let Some(peer) = self.peers.get_mut(peer_id) {
+        if let Some(peer) = self.store.get_peers_mut().get_mut(peer_id) {
             peer.state = PeerVerifyState::Verified;
         }
     }
 
     async fn broadcast_peers(&mut self) {
-        let list = self.peers.values().cloned().collect();
+        let list = self.store.get_peers().values().cloned().collect();
         self.server.broadcast(DaemonEvent::PeerList(list)).await
     }
 }
