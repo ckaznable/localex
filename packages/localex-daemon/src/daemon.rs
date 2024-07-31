@@ -31,18 +31,18 @@ pub enum GossipTopic {
     Hostname,
 }
 
-pub struct Daemon<'a> {
+pub struct Daemon {
     swarm: Swarm<LocalExBehaviour>,
     server: IPCServer,
     topics: HashMap<GossipTopic, TopicHash>,
     auth_channels: HashMap<PeerId, ResponseChannel<LocalExAuthResponse>>,
-    hostname: &'a str,
+    hostname: String,
     ctrlc_rx: mpsc::Receiver<()>,
     store: Box<dyn DaemonDataStore>,
 }
 
-impl<'a> Daemon<'a> {
-    pub fn new(local_keypair: Keypair, hostname: &'a str, sock: Option<PathBuf>, store: Box<dyn DaemonDataStore>) -> Result<Self> {
+impl<'a> Daemon {
+    pub fn new(local_keypair: Keypair, hostname: String, sock: Option<PathBuf>, store: Box<dyn DaemonDataStore>) -> Result<Self> {
         let server = IPCServer::new(sock)?;
         let swarm = network::new_swarm(local_keypair)?;
 
@@ -113,7 +113,7 @@ impl<'a> Daemon<'a> {
         info!("broadcast hostname to peers");
         if let Err(e) = self.swarm.behaviour_mut().gossipsub.publish(
             self.topics.get(&GossipTopic::Hostname).unwrap().clone(),
-            self.hostname,
+            self.hostname.clone(),
         ) {
             error!("hostname publish error: {e:?}");
         }
@@ -138,7 +138,7 @@ impl<'a> Daemon<'a> {
                         channel,
                         LocalExAuthResponse {
                             state,
-                            hostname: String::from(self.hostname),
+                            hostname: self.hostname.clone(),
                         },
                     );
                 };
@@ -151,14 +151,14 @@ impl<'a> Daemon<'a> {
                 self.swarm.behaviour_mut().rr_auth.send_request(
                     &peer_id,
                     LocalExAuthRequest {
-                        hostname: String::from(self.hostname),
+                        hostname: self.hostname.clone(),
                     },
                 );
             }
             RequestLocalInfo => {
                 self.server
                     .broadcast(DaemonEvent::LocalInfo(
-                        String::from(self.hostname),
+                        self.hostname.clone(),
                         *self.swarm.local_peer_id(),
                     ))
                     .await;
