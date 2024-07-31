@@ -9,7 +9,7 @@ use libp2p::{
     swarm::NetworkBehaviour,
     PeerId, StreamProtocol, Swarm, SwarmBuilder,
 };
-use protocol::auth::{LocalExAuthRequest, LocalExAuthResponse};
+use common::auth::{LocalExAuthRequest, LocalExAuthResponse};
 
 pub fn new_swarm(local_keypair: Keypair) -> Result<Swarm<LocalExBehaviour>> {
     let swarm = SwarmBuilder::with_existing_identity(local_keypair)

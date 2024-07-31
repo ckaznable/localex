@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 network = { path = "../network/" }
-protocol = { path = "../protocol/" }
+common = { path = "../common/" }
 localex-ipc = { path = "../localex-ipc/" }
 logger = { path = "../logger/" }
 libp2p = { git = "https://github.com/libp2p/rust-libp2p.git", rev = "1617abb3bfcf3e8663568e90a8fc4009aef04ba9", features = ["tcp", "tokio", "noise", "yamux", "macros", "gossipsub", "mdns", "request-response", "cbor", "quic", "tls"] }

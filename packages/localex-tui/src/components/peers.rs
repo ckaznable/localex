@@ -1,5 +1,5 @@
 use libp2p::PeerId;
-use protocol::peer::{DaemonPeer, PeerVerifyState};
+use common::peer::{DaemonPeer, PeerVerifyState};
 use ratatui::{
     style::{Color, Style},
     text::{Line, Span},

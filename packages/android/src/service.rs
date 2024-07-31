@@ -10,7 +10,7 @@ use libp2p::{
     PeerId, Swarm,
 };
 use network::{new_swarm, LocalExBehaviour, LocalExBehaviourEvent};
-use protocol::{
+use common::{
     auth::{AuthResponseState, LocalExAuthRequest, LocalExAuthResponse},
     event::{ClientEvent, DaemonEvent},
     peer::DaemonPeer,

@@ -1,5 +1,5 @@
 use libp2p::PeerId;
-use protocol::{event::{ClientEvent, DaemonEvent}, peer::{DaemonPeer, PeerVerifyState}};
+use common::{event::{ClientEvent, DaemonEvent}, peer::{DaemonPeer, PeerVerifyState}};
 
 use crate::error::FFIError;
 

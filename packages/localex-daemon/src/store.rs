@@ -4,7 +4,7 @@ use anyhow::Result;
 use ciborium::{from_reader, into_writer};
 use futures::executor::block_on;
 use libp2p::{identity::Keypair, PeerId};
-use protocol::peer::DaemonPeer;
+use common::peer::DaemonPeer;
 use secret_service::{EncryptionType, SecretService};
 
 const SECRET_LABEL: &str = "LocalEx";

@@ -10,7 +10,7 @@ use crossterm::{
 use futures::{FutureExt, StreamExt};
 use libp2p::PeerId;
 use localex_ipc::IPCClient;
-use protocol::{
+use common::{
     event::{ClientEvent, DaemonEvent},
     peer::PeerVerifyState,
 };

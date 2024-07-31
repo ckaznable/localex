@@ -16,7 +16,7 @@ use libp2p::{
 };
 use localex_ipc::IPCServer;
 use network::{LocalExBehaviour, LocalExBehaviourEvent};
-use protocol::{
+use common::{
     auth::{AuthResponseState, LocalExAuthRequest, LocalExAuthResponse},
     event::{ClientEvent, DaemonEvent},
     peer::{DaemonPeer, PeerVerifyState},

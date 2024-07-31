@@ -731,6 +731,11 @@ checksum = "0b6a852b24ab71dffc585bcb46eaf7959d175cb865a7152e35b348d1b2960422"
 [[package]]
 name = "common"
 version = "0.1.0"
+dependencies = [
+ "libp2p",
+ "serde",
+ "serde_repr",
+]
 
 [[package]]
 name = "compact_str"
@@ -2126,10 +2131,10 @@ name = "localax"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "common",
  "futures",
  "libp2p",
  "network",
- "protocol",
  "thiserror",
  "tokio",
  "uniffi",
@@ -2153,6 +2158,7 @@ dependencies = [
  "anyhow",
  "ciborium",
  "clap",
+ "common",
  "ctrlc",
  "dirs",
  "futures",
@@ -2161,7 +2167,6 @@ dependencies = [
  "localex-ipc",
  "logger",
  "network",
- "protocol",
  "secret-service",
  "serde",
  "tokio",
@@ -2179,8 +2184,8 @@ dependencies = [
  "anyhow",
  "async-trait",
  "ciborium",
+ "common",
  "nix 0.29.0",
- "protocol",
  "serde",
  "tokio",
  "tracing",
@@ -2430,8 +2435,8 @@ name = "network"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "common",
  "libp2p",
- "protocol",
  "tokio",
 ]
 
@@ -2837,15 +2842,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.71",
-]
-
-[[package]]
-name = "protocol"
-version = "0.1.0"
-dependencies = [
- "libp2p",
- "serde",
- "serde_repr",
 ]
 
 [[package]]
@@ -3669,12 +3665,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "common",
  "crossterm",
  "futures",
  "libp2p",
  "localex-ipc",
  "logger",
- "protocol",
  "ratatui",
  "serde",
  "tokio",

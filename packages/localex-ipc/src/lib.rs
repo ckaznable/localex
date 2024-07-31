@@ -8,7 +8,7 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use event::{IPCEventRequest, IPCEventResponse};
 use ipc::{IPCMsgPack, IPC};
-use protocol::event::{ClientEvent, DaemonEvent};
+use common::event::{ClientEvent, DaemonEvent};
 use tokio::{
     net::unix::{OwnedReadHalf, OwnedWriteHalf},
     sync::mpsc,
