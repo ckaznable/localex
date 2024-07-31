@@ -1,5 +1,10 @@
 use std::{collections::HashMap, sync::Arc};
 
+use common::{
+    auth::{AuthResponseState, LocalExAuthRequest, LocalExAuthResponse},
+    event::{ClientEvent, DaemonEvent},
+    peer::DaemonPeer,
+};
 use futures::StreamExt;
 use libp2p::{
     gossipsub::{self, TopicHash},
@@ -10,15 +15,7 @@ use libp2p::{
     PeerId, Swarm,
 };
 use network::{new_swarm, LocalExBehaviour, LocalExBehaviourEvent};
-use common::{
-    auth::{AuthResponseState, LocalExAuthRequest, LocalExAuthResponse},
-    event::{ClientEvent, DaemonEvent},
-    peer::DaemonPeer,
-};
-use tokio::{
-    sync::{mpsc, Mutex, MutexGuard},
-    task::JoinHandle,
-};
+use tokio::sync::{mpsc, Mutex};
 
 use crate::{error::FFIError, ffi::FFIDaemonEvent};
 
@@ -34,7 +31,6 @@ pub struct ServiceManager {
     quit_tx: mpsc::Sender<bool>,
     quit_rx: Option<mpsc::Receiver<bool>>,
     daemon_tx: mpsc::Sender<FFIDaemonEvent>,
-    handle: Option<JoinHandle<anyhow::Result<()>>>,
 }
 
 impl ServiceManager {
@@ -49,7 +45,6 @@ impl ServiceManager {
 
         Ok(Self {
             service: Arc::new(Mutex::new(service)),
-            handle: None,
             client_tx,
             client_rx: Some(client_rx),
             quit_tx,
@@ -70,16 +65,15 @@ impl ServiceManager {
         if let (Some(client_rx), Some(quit_rx)) = (self.client_rx.take(), self.quit_rx.take()) {
             let service = self.service.clone();
             let daemon_tx = self.daemon_tx.clone();
-            self.handle = Some(tokio::spawn(async move {
-                let mut guard = service.lock().await;
+            let mut guard = service.lock().await;
 
-                if guard.listen_on().await.is_err() {
-                    let _ = daemon_tx.send(FFIDaemonEvent::Error(FFIError::ListenLibP2PError)).await;
-                }
+            if guard.listen_on().await.is_err() {
+                let _ = daemon_tx
+                    .send(FFIDaemonEvent::Error(FFIError::ListenLibP2PError))
+                    .await;
+            }
 
-                guard.run(client_rx, quit_rx).await;
-                Ok(())
-            }));
+            guard.run(client_rx, quit_rx).await;
         }
 
         Ok(())
@@ -91,7 +85,7 @@ impl ServiceManager {
 }
 
 pub struct Service {
-    swarm: Arc<Mutex<Swarm<LocalExBehaviour>>>,
+    swarm: Swarm<LocalExBehaviour>,
     topics: HashMap<GossipTopic, TopicHash>,
     auth_channels: HashMap<PeerId, ResponseChannel<LocalExAuthResponse>>,
     hostname: String,
@@ -105,10 +99,8 @@ impl Service {
         hostname: String,
         daemon_tx: mpsc::Sender<FFIDaemonEvent>,
     ) -> anyhow::Result<Self> {
-        let swarm = Arc::new(Mutex::new(new_swarm(local_keypair)?));
-
         Ok(Self {
-            swarm,
+            swarm: new_swarm(local_keypair)?,
             hostname,
             daemon_tx,
             auth_channels: HashMap::new(),
@@ -118,12 +110,14 @@ impl Service {
     }
 
     pub async fn listen_on(&mut self) -> anyhow::Result<()> {
-        let mut swarm = self.swarm.lock().await;
-        swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
-        swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
+        self.swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
+        self.swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
 
         let hostname_topic = gossipsub::IdentTopic::new("hostname-broadcaset");
-        swarm.behaviour_mut().gossipsub.subscribe(&hostname_topic)?;
+        self.swarm
+            .behaviour_mut()
+            .gossipsub
+            .subscribe(&hostname_topic)?;
         let _ = self
             .topics
             .insert(GossipTopic::Hostname, hostname_topic.hash());
@@ -136,13 +130,10 @@ impl Service {
         mut client_rx: mpsc::Receiver<ClientEvent>,
         mut quit_rx: mpsc::Receiver<bool>,
     ) {
-        let swarm = self.swarm.clone();
-
         loop {
             tokio::select! {
                 _ = async {
-                    let mut swarm = swarm.lock().await;
-                    if let SwarmEvent::Behaviour(event) = swarm.select_next_some().await {
+                    if let SwarmEvent::Behaviour(event) = self.swarm.select_next_some().await {
                         let _ = match event {
                             LocalExBehaviourEvent::RrAuth(event) => self.handle_auth(event).await,
                             LocalExBehaviourEvent::Gossipsub(event) => self.handle_gossipsub(event).await,
@@ -161,8 +152,7 @@ impl Service {
     }
 
     async fn broadcast_hostname(&mut self) {
-        let mut swarm = self.swarm.lock().await;
-        let _ = swarm.behaviour_mut().gossipsub.publish(
+        let _ = self.swarm.behaviour_mut().gossipsub.publish(
             self.topics.get(&GossipTopic::Hostname).unwrap().clone(),
             self.hostname.clone(),
         );
@@ -172,7 +162,6 @@ impl Service {
         use ClientEvent::*;
         match event {
             VerifyConfirm(peer_id, result) => {
-                let mut swarm = self.swarm.lock().await;
                 let state = if result {
                     AuthResponseState::Accept
                 } else {
@@ -180,7 +169,7 @@ impl Service {
                 };
 
                 if let Some(channel) = self.auth_channels.remove(&peer_id) {
-                    let _ = swarm.behaviour_mut().rr_auth.send_response(
+                    let _ = self.swarm.behaviour_mut().rr_auth.send_response(
                         channel,
                         LocalExAuthResponse {
                             state,
@@ -193,8 +182,7 @@ impl Service {
                 self.remove_peer(&peer_id).await;
             }
             RequestVerify(peer_id) => {
-                let mut swarm = self.swarm.lock().await;
-                swarm.behaviour_mut().rr_auth.send_request(
+                self.swarm.behaviour_mut().rr_auth.send_request(
                     &peer_id,
                     LocalExAuthRequest {
                         hostname: self.hostname.clone(),
@@ -211,20 +199,15 @@ impl Service {
         use mdns::Event::*;
         match event {
             Discovered(list) => {
-                let swarm = self.swarm.clone();
-                let mut swarm = swarm.lock().await;
                 for (peer_id, _) in list {
-                    self.add_peer_with_swarm_guard(&mut swarm, peer_id).await;
+                    self.add_peer(peer_id).await;
                 }
 
                 self.send_peers().await;
             }
             Expired(list) => {
-                let swarm = self.swarm.clone();
-                let mut swarm = swarm.lock().await;
                 for (peer_id, _) in list {
-                    self.remove_peer_with_swarm_guard(&mut swarm, &peer_id)
-                        .await;
+                    self.remove_peer(&peer_id).await;
                 }
 
                 self.send_peers().await;
@@ -292,8 +275,10 @@ impl Service {
             } => {
                 let result = response.state == AuthResponseState::Accept;
                 if result {
-                    let mut swarm = self.swarm.lock().await;
-                    swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer);
+                    self.swarm
+                        .behaviour_mut()
+                        .gossipsub
+                        .add_explicit_peer(&peer);
                 }
 
                 self.peers
@@ -313,38 +298,24 @@ impl Service {
     }
 
     async fn remove_peer(&mut self, peer_id: &PeerId) {
-        let swarm = self.swarm.clone();
-        let mut swarm = swarm.lock().await;
-        self.remove_peer_with_swarm_guard(&mut swarm, peer_id).await;
-    }
-
-    async fn remove_peer_with_swarm_guard<'a>(
-        &mut self,
-        swarm: &mut MutexGuard<'a, Swarm<LocalExBehaviour>>,
-        peer_id: &PeerId,
-    ) {
-        swarm
+        self.swarm
             .behaviour_mut()
             .gossipsub
             .remove_explicit_peer(peer_id);
     }
 
     async fn add_peer(&mut self, peer_id: PeerId) {
-        let swarm = self.swarm.clone();
-        let mut swarm = swarm.lock().await;
-        self.add_peer_with_swarm_guard(&mut swarm, peer_id).await;
-    }
-
-    async fn add_peer_with_swarm_guard<'a>(
-        &mut self,
-        swarm: &mut MutexGuard<'a, Swarm<LocalExBehaviour>>,
-        peer_id: PeerId,
-    ) {
-        swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
+        self.swarm
+            .behaviour_mut()
+            .gossipsub
+            .add_explicit_peer(&peer_id);
     }
 
     async fn send_peers(&self) {
         let list = self.peers.values().cloned().collect();
-        let _ = self.daemon_tx.send(DaemonEvent::PeerList(list).into()).await;
+        let _ = self
+            .daemon_tx
+            .send(DaemonEvent::PeerList(list).into())
+            .await;
     }
 }
