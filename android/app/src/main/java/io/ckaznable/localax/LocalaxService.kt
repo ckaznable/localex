@@ -40,10 +40,13 @@ class LocalaxService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         isListeningDaemon = true
-        serviceScope.launch {
-            Log.d(LOG_TAG, "localax start listen")
-            listen()
+        Log.d(LOG_TAG, "localax start listen")
 
+        serviceScope.launch {
+            listen()
+        }
+
+        serviceScope.launch {
             while (isListeningDaemon) {
                 when (val data = recv()) {
                     is FfiDaemonEvent.InComingVerify -> handleInComingVerify(data.v1)
@@ -54,13 +57,15 @@ class LocalaxService : Service() {
                 }
             }
         }
+
         return START_STICKY
     }
 
     override fun onDestroy() {
         cleanupScope.launch {
             try {
-                io.ckaznable.localax.rust.stop();
+                isListeningDaemon = false
+                io.ckaznable.localax.rust.stop()
             } finally {
                 super.onDestroy()
                 serviceScope.cancel()
