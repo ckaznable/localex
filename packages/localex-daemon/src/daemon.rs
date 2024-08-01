@@ -122,9 +122,13 @@ impl LocalExProtocol for Daemon {
         self.store.save_peers()
     }
 
-    fn on_remove_peer(&mut self, _: &PeerId) {}
+    fn on_remove_peer(&mut self, peer_id: &PeerId) {
+        self.store.remove_peer(peer_id)
+    }
 
-    fn on_add_peer(&mut self, _: PeerId) {}
+    fn on_add_peer(&mut self, peer_id: PeerId) {
+        self.store.add_peer(DaemonPeer::new(peer_id));
+    }
 
     async fn send_daemon_event(&mut self, event: DaemonEvent) -> Result<()> {
         self.server.broadcast(event).await;
