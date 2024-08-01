@@ -17,7 +17,7 @@ pub trait LocalKeyStore {
     fn save_local_key(&self, _: &Keypair) -> Result<()> { Ok(()) }
 }
 
-pub trait PiarPeersStore {
+pub trait PairPeersStore {
     fn get_peers(&mut self) -> &BTreeMap<PeerId, DaemonPeer>;
     fn get_peers_mut(&mut self) -> &mut BTreeMap<PeerId, DaemonPeer>;
     fn save_peers(&mut self) -> Result<()>;
@@ -25,14 +25,14 @@ pub trait PiarPeersStore {
     fn remove_peer(&mut self, peer: &PeerId);
 }
 
-pub trait DaemonDataStore: LocalKeyStore + PiarPeersStore {}
+pub trait DaemonDataStore: LocalKeyStore + PairPeersStore {}
 
 #[derive(Default)]
 pub struct DefaultStore(pub BTreeMap<PeerId, DaemonPeer>);
 impl DaemonDataStore for DefaultStore {}
 impl LocalKeyStore for DefaultStore {}
 
-impl PiarPeersStore for DefaultStore {
+impl PairPeersStore for DefaultStore {
     #[inline]
     fn get_peers(&mut self) -> &BTreeMap<PeerId, DaemonPeer> {
         &self.0
@@ -149,7 +149,7 @@ impl<'a> LocalKeyStore for SecretStore<'a> {
     }
 }
 
-impl<'a> PiarPeersStore for SecretStore<'a> {
+impl<'a> PairPeersStore for SecretStore<'a> {
     #[inline]
     fn get_peers_mut(&mut self) -> &mut BTreeMap<PeerId, DaemonPeer> {
         block_on(async {

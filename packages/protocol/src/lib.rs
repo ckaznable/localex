@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use common::{
     auth::{AuthResponseState, LocalExAuthRequest, LocalExAuthResponse},
     event::{ClientEvent, DaemonEvent},
-    peer::DaemonPeer,
+    peer::{DaemonPeer, PeerVerifyState},
 };
 use libp2p::{
     gossipsub::{self, TopicHash},
@@ -23,27 +23,58 @@ pub enum GossipTopic {
 
 #[allow(unused_must_use)]
 #[async_trait]
-pub trait LocalExProtocol {
+pub trait LocalExProtocol: Send {
     fn hostname(&self) -> String;
     fn topics_mut(&mut self) -> &mut HashMap<GossipTopic, TopicHash>;
+    fn topics(&self) -> &HashMap<GossipTopic, TopicHash>;
     fn auth_channels_mut(&mut self) -> &mut HashMap<PeerId, ResponseChannel<LocalExAuthResponse>>;
     fn peers_mut(&mut self) -> &mut BTreeMap<PeerId, DaemonPeer>;
 
     fn swarm(&self) -> &Swarm<LocalExBehaviour>;
     fn swarm_mut(&mut self) -> &mut Swarm<LocalExBehaviour>;
 
-    fn remove_peer(&mut self, peer_id: &PeerId);
-    fn add_peer(&mut self, peer_id: PeerId);
-    fn verified(&mut self, peer_id: &PeerId);
-    fn get_peers(&self) -> Vec<DaemonPeer>;
-    fn save_peers(&self) -> Result<()>;
+    fn get_peers(&mut self) -> Vec<DaemonPeer>;
+    fn save_peers(&mut self) -> Result<()>;
+
+    fn on_remove_peer(&mut self, _: &PeerId);
+    fn on_add_peer(&mut self, _: PeerId);
 
     async fn send_daemon_event(&mut self, event: DaemonEvent) -> Result<()>;
-    fn broadcast_hostname(&mut self);
 
-    async fn broadcast_peers(&mut self) {
+    fn broadcast_hostname(&mut self) {
+        info!("broadcast hostname to peers");
+        let topic = self.topics().get(&GossipTopic::Hostname).unwrap().clone();
+        let hostname = self.hostname();
+        if let Err(e) = self.swarm_mut().behaviour_mut().gossipsub.publish(topic, hostname) {
+            error!("hostname publish error: {e:?}");
+        }
+    }
+
+    async fn send_peers(&mut self) {
         let list = self.get_peers();
         self.send_daemon_event(DaemonEvent::PeerList(list)).await;
+    }
+
+    fn remove_peer(&mut self, peer_id: &PeerId) {
+        self.swarm_mut()
+            .behaviour_mut()
+            .gossipsub
+            .remove_explicit_peer(peer_id);
+        self.on_remove_peer(peer_id);
+    }
+
+    fn verified(&mut self, peer_id: &PeerId) {
+        if let Some(peer) = self.peers_mut().get_mut(peer_id) {
+            peer.state = PeerVerifyState::Verified;
+        }
+    }
+
+    fn add_peer(&mut self, peer_id: PeerId) {
+        self.swarm_mut()
+            .behaviour_mut()
+            .gossipsub
+            .add_explicit_peer(&peer_id);
+        self.on_add_peer(peer_id);
     }
 
     fn listen_on(&mut self) -> Result<()> {
@@ -61,12 +92,10 @@ pub trait LocalExProtocol {
 
     async fn handle_event(&mut self, event: LocalExBehaviourEvent) -> Result<()> {
         match event {
-            LocalExBehaviourEvent::RrAuth(event) => self.handle_auth(event).await?,
-            LocalExBehaviourEvent::Gossipsub(event) => self.handle_gossipsub(event).await?,
-            LocalExBehaviourEvent::Mdns(event) => self.handle_mdns(event).await?,
+            LocalExBehaviourEvent::RrAuth(event) => self.handle_auth(event).await,
+            LocalExBehaviourEvent::Gossipsub(event) => self.handle_gossipsub(event).await,
+            LocalExBehaviourEvent::Mdns(event) => self.handle_mdns(event).await,
         }
-
-        Ok(())
     }
 
     async fn handle_client_event(&mut self, event: ClientEvent) -> Result<()> {
@@ -123,14 +152,14 @@ pub trait LocalExProtocol {
                     self.add_peer(peer_id);
                 }
 
-                self.broadcast_peers().await;
+                self.send_peers().await;
             }
             Expired(list) => {
                 for (peer_id, _) in list {
                     self.remove_peer(&peer_id);
                 }
 
-                self.broadcast_peers().await;
+                self.send_peers().await;
             }
         }
 
@@ -157,12 +186,12 @@ pub trait LocalExProtocol {
                     peer.set_hostname(hostname);
                 }
 
-                self.broadcast_peers().await;
+                self.send_peers().await;
             }
             GossipsubNotSupported { peer_id } => {
                 info!("{} not support gossipsub", peer_id);
                 self.remove_peer(&peer_id);
-                self.broadcast_peers().await;
+                self.send_peers().await;
             }
             Unsubscribed { peer_id, .. } => {
                 info!("{} unsubscribe topic", peer_id);
@@ -205,7 +234,7 @@ pub trait LocalExProtocol {
                 };
 
                 self.send_daemon_event(DaemonEvent::InComingVerify(peer)).await;
-                self.broadcast_peers().await;
+                self.send_peers().await;
             }
             Message {
                 peer,
@@ -231,7 +260,7 @@ pub trait LocalExProtocol {
                 let _ = self.save_peers();
 
                 self.send_daemon_event(DaemonEvent::VerifyResult(peer, result)).await;
-                self.broadcast_peers().await;
+                self.send_peers().await;
             }
             _ => {}
         }

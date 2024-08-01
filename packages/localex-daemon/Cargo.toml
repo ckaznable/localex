@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+protocol = { path = "../protocol/" }
 network = { path = "../network/" }
 common = { path = "../common/" }
 localex-ipc = { path = "../localex-ipc/" }
@@ -20,6 +21,7 @@ tracing = "0.1.40"
 dirs = "5.0.1"
 ctrlc = "3.4.4"
 ciborium = "0.2.2"
+async-trait = "0.1.81"
 
 [profile.release]
 opt-level = "z"

@@ -1,28 +1,24 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::{BTreeMap, HashMap}, sync::Arc};
 
+use async_trait::async_trait;
 use common::{
-    auth::{AuthResponseState, LocalExAuthRequest, LocalExAuthResponse},
+    auth::LocalExAuthResponse,
     event::{ClientEvent, DaemonEvent},
     peer::DaemonPeer,
 };
 use futures::StreamExt;
 use libp2p::{
-    gossipsub::{self, TopicHash},
+    gossipsub::TopicHash,
     identity::Keypair,
-    mdns,
-    request_response::{self, ResponseChannel},
+    request_response::ResponseChannel,
     swarm::SwarmEvent,
     PeerId, Swarm,
 };
 use network::{new_swarm, LocalExBehaviour, LocalExBehaviourEvent};
+use protocol::{GossipTopic, LocalExProtocol};
 use tokio::sync::{mpsc, Mutex};
 
 use crate::{error::FFIError, ffi::FFIDaemonEvent};
-
-#[derive(Hash, Clone, Copy, PartialEq, Eq, Debug)]
-pub enum GossipTopic {
-    Hostname,
-}
 
 pub struct ServiceManager {
     service: Arc<Mutex<Service>>,
@@ -67,7 +63,7 @@ impl ServiceManager {
             let daemon_tx = self.daemon_tx.clone();
             let mut guard = service.lock().await;
 
-            if guard.listen_on().await.is_err() {
+            if guard.listen_on().is_err() {
                 let _ = daemon_tx
                     .send(FFIDaemonEvent::Error(FFIError::ListenLibP2PError))
                     .await;
@@ -89,7 +85,7 @@ pub struct Service {
     topics: HashMap<GossipTopic, TopicHash>,
     auth_channels: HashMap<PeerId, ResponseChannel<LocalExAuthResponse>>,
     hostname: String,
-    peers: HashMap<PeerId, DaemonPeer>,
+    peers: BTreeMap<PeerId, DaemonPeer>,
     daemon_tx: mpsc::Sender<FFIDaemonEvent>,
 }
 
@@ -105,24 +101,8 @@ impl Service {
             daemon_tx,
             auth_channels: HashMap::new(),
             topics: HashMap::new(),
-            peers: HashMap::new(),
+            peers: BTreeMap::new(),
         })
-    }
-
-    pub async fn listen_on(&mut self) -> anyhow::Result<()> {
-        self.swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
-        self.swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
-
-        let hostname_topic = gossipsub::IdentTopic::new("hostname-broadcaset");
-        self.swarm
-            .behaviour_mut()
-            .gossipsub
-            .subscribe(&hostname_topic)?;
-        let _ = self
-            .topics
-            .insert(GossipTopic::Hostname, hostname_topic.hash());
-
-        Ok(())
     }
 
     pub async fn run(
@@ -150,172 +130,51 @@ impl Service {
             }
         }
     }
+}
 
-    async fn broadcast_hostname(&mut self) {
-        let _ = self.swarm.behaviour_mut().gossipsub.publish(
-            self.topics.get(&GossipTopic::Hostname).unwrap().clone(),
-            self.hostname.clone(),
-        );
+#[async_trait]
+impl LocalExProtocol for Service {
+    fn hostname(&self) -> String {
+        self.hostname.clone()
     }
 
-    async fn handle_client_event(&mut self, event: ClientEvent) -> anyhow::Result<()> {
-        use ClientEvent::*;
-        match event {
-            VerifyConfirm(peer_id, result) => {
-                let state = if result {
-                    AuthResponseState::Accept
-                } else {
-                    AuthResponseState::Deny
-                };
-
-                if let Some(channel) = self.auth_channels.remove(&peer_id) {
-                    let _ = self.swarm.behaviour_mut().rr_auth.send_response(
-                        channel,
-                        LocalExAuthResponse {
-                            state,
-                            hostname: self.hostname.clone(),
-                        },
-                    );
-                };
-            }
-            DisconnectPeer(peer_id) => {
-                self.remove_peer(&peer_id).await;
-            }
-            RequestVerify(peer_id) => {
-                self.swarm.behaviour_mut().rr_auth.send_request(
-                    &peer_id,
-                    LocalExAuthRequest {
-                        hostname: self.hostname.clone(),
-                    },
-                );
-            }
-            _ => {}
-        }
-
-        Ok(())
+    fn topics_mut(&mut self) -> &mut HashMap<protocol::GossipTopic, TopicHash> {
+        &mut self.topics
     }
 
-    async fn handle_mdns(&mut self, event: mdns::Event) -> anyhow::Result<()> {
-        use mdns::Event::*;
-        match event {
-            Discovered(list) => {
-                for (peer_id, _) in list {
-                    self.add_peer(peer_id).await;
-                }
-
-                self.send_peers().await;
-            }
-            Expired(list) => {
-                for (peer_id, _) in list {
-                    self.remove_peer(&peer_id).await;
-                }
-
-                self.send_peers().await;
-            }
-        }
-
-        Ok(())
+    fn topics(&self) -> &HashMap<protocol::GossipTopic, TopicHash> {
+        &self.topics
     }
 
-    async fn handle_gossipsub(&mut self, event: gossipsub::Event) -> anyhow::Result<()> {
-        use gossipsub::Event::*;
-        match event {
-            Subscribed { topic, .. } => {
-                if topic == *self.topics.get(&GossipTopic::Hostname).unwrap() {
-                    self.broadcast_hostname().await;
-                }
-            }
-            Message { message, .. } => {
-                if let Some(peer) = message.source.and_then(|peer| self.peers.get_mut(&peer)) {
-                    let hostname =
-                        String::from_utf8(message.data).unwrap_or_else(|_| String::from("unknown"));
-                    peer.set_hostname(hostname);
-                }
-
-                self.send_peers().await;
-            }
-            GossipsubNotSupported { peer_id } => {
-                self.remove_peer(&peer_id).await;
-                self.send_peers().await;
-            }
-            _ => {}
-        }
-
-        Ok(())
+    fn auth_channels_mut(&mut self) -> &mut HashMap<PeerId, ResponseChannel<LocalExAuthResponse>> {
+        &mut self.auth_channels
     }
 
-    async fn handle_auth(
-        &mut self,
-        event: request_response::Event<LocalExAuthRequest, LocalExAuthResponse>,
-    ) -> anyhow::Result<()> {
-        use request_response::Event::*;
-        match event {
-            Message {
-                peer,
-                message:
-                    request_response::Message::Request {
-                        channel, request, ..
-                    },
-            } => {
-                self.add_peer(peer).await;
-                self.auth_channels.insert(peer, channel);
-
-                let peer = self.peers.get_mut(&peer).unwrap();
-                peer.set_hostname(request.hostname);
-
-                let _ = self
-                    .daemon_tx
-                    .send(DaemonEvent::InComingVerify(peer.clone()).into())
-                    .await;
-                self.send_peers().await;
-            }
-            Message {
-                peer,
-                message: request_response::Message::Response { response, .. },
-            } => {
-                let result = response.state == AuthResponseState::Accept;
-                if result {
-                    self.swarm
-                        .behaviour_mut()
-                        .gossipsub
-                        .add_explicit_peer(&peer);
-                }
-
-                self.peers
-                    .get_mut(&peer)
-                    .map(|p| p.set_hostname(response.hostname));
-
-                let _ = self
-                    .daemon_tx
-                    .send(DaemonEvent::VerifyResult(peer, result).into())
-                    .await;
-                self.send_peers().await;
-            }
-            _ => {}
-        }
-
-        Ok(())
+    fn peers_mut(&mut self) -> &mut BTreeMap<PeerId, DaemonPeer> {
+        &mut self.peers
     }
 
-    async fn remove_peer(&mut self, peer_id: &PeerId) {
-        self.swarm
-            .behaviour_mut()
-            .gossipsub
-            .remove_explicit_peer(peer_id);
+    fn swarm(&self) -> &Swarm<LocalExBehaviour> {
+        &self.swarm
     }
 
-    async fn add_peer(&mut self, peer_id: PeerId) {
-        self.swarm
-            .behaviour_mut()
-            .gossipsub
-            .add_explicit_peer(&peer_id);
+    fn swarm_mut(&mut self) -> &mut Swarm<LocalExBehaviour> {
+        &mut self.swarm
     }
 
-    async fn send_peers(&self) {
-        let list = self.peers.values().cloned().collect();
-        let _ = self
-            .daemon_tx
-            .send(DaemonEvent::PeerList(list).into())
-            .await;
+    fn get_peers(&mut self) -> Vec<DaemonPeer> {
+        self.peers.values().cloned().collect()
+    }
+
+    fn save_peers(&mut self) -> anyhow::Result<()> {
+        todo!()
+    }
+
+    fn on_remove_peer(&mut self, _: &PeerId) {}
+
+    fn on_add_peer(&mut self, _: PeerId) {}
+
+    async fn send_daemon_event(&mut self, event: DaemonEvent) -> anyhow::Result<()> {
+        self.daemon_tx.send(event.into()).await.map_err(anyhow::Error::from)
     }
 }

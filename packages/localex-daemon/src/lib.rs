@@ -1,6 +1,7 @@
 use anyhow::Result;
 use daemon::Daemon;
 use libp2p::identity::Keypair;
+use protocol::LocalExProtocol;
 use store::{DaemonDataStore, DefaultStore, SecretStore};
 
 pub mod cli;
@@ -15,7 +16,7 @@ pub async fn main(param: config::Config) -> Result<()> {
         stdout: false,
     })?;
 
-    let store: Box<dyn DaemonDataStore> = if param.no_save {
+    let store: Box<dyn DaemonDataStore + Send + Sync> = if param.no_save {
         Box::new(DefaultStore::default())
     } else {
         Box::new(SecretStore::new().await?)
