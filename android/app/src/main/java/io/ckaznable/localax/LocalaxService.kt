@@ -8,6 +8,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.os.Binder
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -19,12 +20,26 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 
 class LocalaxService : Service() {
+    private val uiScope = CoroutineScope(Dispatchers.Default + Job())
     private val serviceScope = CoroutineScope(Dispatchers.Default + Job())
     private val cleanupScope = CoroutineScope(Dispatchers.Default + Job())
     private var isListeningDaemon = false
+
+    private val _serviceFlow = MutableSharedFlow<LocalaxServiceEvent>()
+    val serviceFlow = _serviceFlow.asSharedFlow()
+
+    private val _uiFlow = MutableSharedFlow<FrontendReply>()
+    private val uiFlow = _uiFlow.asSharedFlow()
+
+    private val binder = LocalBinder()
+    inner class LocalBinder : Binder() {
+        fun getService(): LocalaxService = this@LocalaxService
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -41,6 +56,10 @@ class LocalaxService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         isListeningDaemon = true
         Log.d(LOG_TAG, "localax start listen")
+
+        serviceScope.launch {
+            handleUIEvent()
+        }
 
         serviceScope.launch {
             listen()
@@ -69,6 +88,7 @@ class LocalaxService : Service() {
             } finally {
                 super.onDestroy()
                 serviceScope.cancel()
+                uiScope.cancel()
             }
         }
     }
@@ -91,16 +111,36 @@ class LocalaxService : Service() {
             .build()
     }
 
-    private fun handleInComingVerify(peer: FfiDaemonPeer) {
-
+    private suspend fun handleInComingVerify(peer: FfiDaemonPeer) {
+        _serviceFlow.emit(LocalaxServiceEvent.InComingVerifyRequest(peer))
     }
 
-    private fun handlePeerList(list: List<FfiDaemonPeer>) {
+    private suspend fun handlePeerList(list: List<FfiDaemonPeer>) {
         Log.d(LOG_TAG, "get peer list " + list.size)
+        _serviceFlow.emit(LocalaxServiceEvent.UpdatePeerList(list))
     }
 
-    private  fun handleVerifyResult(peerId: ByteArray, result: Boolean) {
+    private suspend fun handleVerifyResult(peerId: ByteArray, result: Boolean) {
+        TODO()
+    }
 
+    private suspend fun handleUIEvent() {
+        uiFlow.collect { event ->
+            when (event) {
+                is FrontendReply.ReplyVerifyRequest -> {
+                    TODO()
+                }
+                is FrontendReply.RequestVerify -> {
+                    TODO()
+                }
+            }
+        }
+    }
+
+    fun sendUIEvent(command: FrontendReply) {
+        uiScope.launch {
+            _uiFlow.emit(command)
+        }
     }
 
     companion object {
