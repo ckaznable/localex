@@ -9,3 +9,7 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 tracing-appender = "0.2.3"
 anyhow = "1.0.86"
 dirs = "5.0.1"
+
+[target.'cfg(target_os = "android")'.dependencies]
+tracing_android_trace = { version = "0.1.1", features = ["api_level_29"] }
+

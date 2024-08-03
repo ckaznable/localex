@@ -7,12 +7,24 @@ use tracing_subscriber::{
 };
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 
+#[cfg(target_os = "android")]
+use tracing_subscriber::prelude::*;
+
 #[derive(Default)]
 pub struct LoggerConfig<'a> {
     pub filename: &'a str,
     pub stdout: bool,
 }
 
+#[cfg(target_os = "android")]
+pub fn init_logger() {
+    tracing_subscriber::registry()
+        .with(tracing_android_trace::AndroidTraceLayer::new())
+        .try_init()
+        .unwrap();
+}
+
+#[cfg(not(target_os = "android"))]
 pub fn init_logger(config: LoggerConfig) -> Result<()> {
     let mut log_dir = dirs::cache_dir().unwrap();
     log_dir.push("localex");
