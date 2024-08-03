@@ -1202,6 +1202,7 @@ public object FfiConverterByteArray : FfiConverterRustBuffer<ByteArray> {
 
 data class FfiDaemonPeer(
     var `peerId`: kotlin.ByteArray,
+    var `peerIdStr`: kotlin.String,
     var `state`: FfiPeerVerifyState,
     var `hostname`: kotlin.String = "unknown",
 ) {
@@ -1212,6 +1213,7 @@ public object FfiConverterTypeFFIDaemonPeer : FfiConverterRustBuffer<FfiDaemonPe
     override fun read(buf: ByteBuffer): FfiDaemonPeer =
         FfiDaemonPeer(
             FfiConverterByteArray.read(buf),
+            FfiConverterString.read(buf),
             FfiConverterTypeFFIPeerVerifyState.read(buf),
             FfiConverterString.read(buf),
         )
@@ -1219,6 +1221,7 @@ public object FfiConverterTypeFFIDaemonPeer : FfiConverterRustBuffer<FfiDaemonPe
     override fun allocationSize(value: FfiDaemonPeer) =
         (
             FfiConverterByteArray.allocationSize(value.`peerId`) +
+                FfiConverterString.allocationSize(value.`peerIdStr`) +
                 FfiConverterTypeFFIPeerVerifyState.allocationSize(value.`state`) +
                 FfiConverterString.allocationSize(value.`hostname`)
         )
@@ -1228,6 +1231,7 @@ public object FfiConverterTypeFFIDaemonPeer : FfiConverterRustBuffer<FfiDaemonPe
         buf: ByteBuffer,
     ) {
         FfiConverterByteArray.write(value.`peerId`, buf)
+        FfiConverterString.write(value.`peerIdStr`, buf)
         FfiConverterTypeFFIPeerVerifyState.write(value.`state`, buf)
         FfiConverterString.write(value.`hostname`, buf)
     }
@@ -1342,7 +1346,8 @@ public object FfiConverterTypeFFIClientEvent : FfiConverterRustBuffer<FfiClientE
 sealed class FfiDaemonEvent {
     data class VerifyResult(
         val v1: kotlin.ByteArray,
-        val v2: kotlin.Boolean,
+        val v2: kotlin.String,
+        val v3: kotlin.Boolean,
     ) : FfiDaemonEvent() {
         companion object
     }
@@ -1383,6 +1388,7 @@ public object FfiConverterTypeFFIDaemonEvent : FfiConverterRustBuffer<FfiDaemonE
             1 ->
                 FfiDaemonEvent.VerifyResult(
                     FfiConverterByteArray.read(buf),
+                    FfiConverterString.read(buf),
                     FfiConverterBoolean.read(buf),
                 )
             2 ->
@@ -1413,7 +1419,8 @@ public object FfiConverterTypeFFIDaemonEvent : FfiConverterRustBuffer<FfiDaemonE
                 (
                     4UL +
                         FfiConverterByteArray.allocationSize(value.v1) +
-                        FfiConverterBoolean.allocationSize(value.v2)
+                        FfiConverterString.allocationSize(value.v2) +
+                        FfiConverterBoolean.allocationSize(value.v3)
                 )
             }
             is FfiDaemonEvent.InComingVerify -> {
@@ -1461,7 +1468,8 @@ public object FfiConverterTypeFFIDaemonEvent : FfiConverterRustBuffer<FfiDaemonE
             is FfiDaemonEvent.VerifyResult -> {
                 buf.putInt(1)
                 FfiConverterByteArray.write(value.v1, buf)
-                FfiConverterBoolean.write(value.v2, buf)
+                FfiConverterString.write(value.v2, buf)
+                FfiConverterBoolean.write(value.v3, buf)
                 Unit
             }
             is FfiDaemonEvent.InComingVerify -> {
