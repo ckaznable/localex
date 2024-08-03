@@ -14,7 +14,7 @@ use tokio::{
     sync::mpsc,
     task::JoinHandle,
 };
-use tracing::error;
+use tracing::{error, info};
 
 pub type RequestFromClient = IPCEventRequest<ClientEvent>;
 pub type RequestFromServer = IPCEventResponse<DaemonEvent>;
@@ -65,6 +65,10 @@ impl IPCServer {
             }
         }
 
+        if !disconnect_stream.is_empty() {
+            info!("{} client disconnected", disconnect_stream.len());
+        }
+
         disconnect_stream
             .iter()
             .for_each(|k| {
@@ -74,7 +78,11 @@ impl IPCServer {
 
     pub async fn recv(&mut self) -> ClientEvent {
         let (stream, data) = self.recv_stream().await;
-        self.id_map.insert(data.client_id, stream);
+        if let std::collections::hash_map::Entry::Vacant(e) = self.id_map.entry(data.client_id.clone()) {
+            info!("{} connected", &data.client_id);
+            e.insert(stream);
+        }
+
         data.event
     }
 
