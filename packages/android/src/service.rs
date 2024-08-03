@@ -170,9 +170,9 @@ impl LocalExProtocol for Service {
         todo!()
     }
 
-    fn on_remove_peer(&mut self, _: &PeerId) {}
+    fn on_remove_peer(&mut self, _: &PeerId) { }
 
-    fn on_add_peer(&mut self, _: PeerId) {}
+    fn on_add_peer(&mut self, _: PeerId) { }
 
     async fn send_daemon_event(&mut self, event: DaemonEvent) -> anyhow::Result<()> {
         self.daemon_tx.send(event.into()).await.map_err(anyhow::Error::from)

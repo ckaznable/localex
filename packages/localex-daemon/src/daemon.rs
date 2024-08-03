@@ -59,13 +59,9 @@ impl Daemon {
     pub async fn run(&mut self) -> Result<()> {
         self.server.prepare().await?;
 
-        let mut hostname_broadcast_interval = tokio::time::interval(Duration::from_secs(60));
         loop {
-            let hostname_broadcast_tick = hostname_broadcast_interval.tick();
-
             tokio::select! {
-                _ = hostname_broadcast_tick => self.broadcast_hostname(),
-                    event = self.server.recv() => {
+                event = self.server.recv() => {
                     if let Err(e) = self.handle_client_event(event).await {
                         error!("client event error: {e:?}");
                     }
@@ -122,13 +118,9 @@ impl LocalExProtocol for Daemon {
         self.store.save_peers()
     }
 
-    fn on_remove_peer(&mut self, peer_id: &PeerId) {
-        self.store.remove_peer(peer_id)
-    }
+    fn on_remove_peer(&mut self, _: &PeerId) { }
 
-    fn on_add_peer(&mut self, peer_id: PeerId) {
-        self.store.add_peer(DaemonPeer::new(peer_id));
-    }
+    fn on_add_peer(&mut self, _: PeerId) { }
 
     async fn send_daemon_event(&mut self, event: DaemonEvent) -> Result<()> {
         self.server.broadcast(event).await;

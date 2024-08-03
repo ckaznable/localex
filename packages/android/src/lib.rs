@@ -7,6 +7,9 @@ use libp2p::identity::Keypair;
 use common::event::ClientEvent;
 use global::*;
 
+#[cfg(target_os = "android")]
+use logger::init_logger;
+
 mod global;
 mod service;
 mod error;
@@ -14,6 +17,9 @@ mod ffi;
 
 #[uniffi::export]
 pub fn init(hostname: String, bytekey: Option<Vec<u8>>) -> Result<(), FFIError> {
+    #[cfg(target_os = "android")]
+    init_logger();
+
     bytekey
         .and_then(|secret| Keypair::from_protobuf_encoding(&secret).ok())
         .or_else(|| Some(Keypair::generate_ed25519()))

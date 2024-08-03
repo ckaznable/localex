@@ -39,7 +39,7 @@ impl TryFrom<FFIClientEvent> for ClientEvent {
 
 #[derive(uniffi::Enum)]
 pub enum FFIDaemonEvent {
-    VerifyResult(Vec<u8>, bool),
+    VerifyResult(Vec<u8>, String, bool),
     InComingVerify(FFIDaemonPeer),
     PeerList(Vec<FFIDaemonPeer>),
     LocalInfo(String, Vec<u8>),
@@ -50,7 +50,7 @@ pub enum FFIDaemonEvent {
 impl From<DaemonEvent> for FFIDaemonEvent  {
     fn from(event: DaemonEvent) -> Self {
         match event {
-            DaemonEvent::VerifyResult(p, result) => Self::VerifyResult(p.to_bytes(), result),
+            DaemonEvent::VerifyResult(p, result) => Self::VerifyResult(p.to_bytes(), p.to_string(), result),
             DaemonEvent::InComingVerify(p) => Self::InComingVerify(p.into()),
             DaemonEvent::PeerList(peers) => Self::PeerList(peers.into_iter().map(|p| p.into()).collect()),
             DaemonEvent::LocalInfo(hostname, local_id) => Self::LocalInfo(hostname, local_id.to_bytes()),
@@ -64,7 +64,7 @@ impl TryFrom<FFIDaemonEvent> for DaemonEvent {
 
     fn try_from(event: FFIDaemonEvent) -> Result<Self, Self::Error> {
         let event = match event {
-            FFIDaemonEvent::VerifyResult(p, result) => Self::VerifyResult(PeerId::from_bytes(&p)?, result),
+            FFIDaemonEvent::VerifyResult(p, _, result) => Self::VerifyResult(PeerId::from_bytes(&p)?, result),
             FFIDaemonEvent::InComingVerify(p) => Self::InComingVerify(p.try_into()?),
             FFIDaemonEvent::LocalInfo(hostname, p) => Self::LocalInfo(hostname, PeerId::from_bytes(&p)?),
             FFIDaemonEvent::PeerList(peers) => {
@@ -112,6 +112,7 @@ impl From<FFIPeerVerifyState> for PeerVerifyState {
 #[derive(uniffi::Record)]
 pub struct FFIDaemonPeer {
     pub peer_id: Vec<u8>,
+    pub peer_id_str: String,
     pub state: FFIPeerVerifyState,
     #[uniffi(default = "unknown")]
     pub hostname: String,
@@ -121,6 +122,7 @@ impl From<DaemonPeer> for FFIDaemonPeer {
     fn from(value: DaemonPeer) -> Self {
         Self {
             peer_id: value.peer_id.to_bytes(),
+            peer_id_str: value.peer_id.to_string(),
             state: value.state.into(),
             hostname: value.hostname.unwrap_or_else(|| String::from("unknown")),
         }

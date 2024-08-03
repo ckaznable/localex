@@ -21,8 +21,6 @@ pub trait PairPeersStore {
     fn get_peers(&mut self) -> &BTreeMap<PeerId, DaemonPeer>;
     fn get_peers_mut(&mut self) -> &mut BTreeMap<PeerId, DaemonPeer>;
     fn save_peers(&mut self) -> Result<()>;
-    fn add_peer(&mut self, peer: DaemonPeer);
-    fn remove_peer(&mut self, peer: &PeerId);
 }
 
 pub trait DaemonDataStore: LocalKeyStore + PairPeersStore {}
@@ -46,16 +44,6 @@ impl PairPeersStore for DefaultStore {
     #[inline]
     fn save_peers(&mut self) -> Result<()> {
         Ok(())
-    }
-
-    #[inline]
-    fn add_peer(&mut self, peer: DaemonPeer) {
-        self.0.insert(peer.peer_id, peer);
-    }
-
-    #[inline]
-    fn remove_peer(&mut self, peer: &PeerId) {
-        self.0.remove(peer);
     }
 }
 
@@ -175,15 +163,5 @@ impl<'a> PairPeersStore for SecretStore<'a> {
             into_writer(&self.peers, &mut data)?;
             self.save_secret_with_one_attr(PAIR_PEERS_ATTR, &data).await
         })
-    }
-
-    #[inline]
-    fn add_peer(&mut self, peer: DaemonPeer) {
-        self.peers.insert(peer.peer_id, peer);
-    }
-
-    #[inline]
-    fn remove_peer(&mut self, peer_id: &PeerId) {
-        self.peers.remove(peer_id);
     }
 }
