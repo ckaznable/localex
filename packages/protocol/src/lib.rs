@@ -60,6 +60,7 @@ pub trait LocalExProtocol: Send {
             .behaviour_mut()
             .gossipsub
             .remove_explicit_peer(peer_id);
+        self.peers_mut().remove(peer_id);
         self.on_remove_peer(peer_id);
     }
 
@@ -74,6 +75,7 @@ pub trait LocalExProtocol: Send {
             .behaviour_mut()
             .gossipsub
             .add_explicit_peer(&peer_id);
+        self.peers_mut().insert(peer_id, DaemonPeer::new(peer_id));
         self.on_add_peer(peer_id);
     }
 
@@ -133,6 +135,7 @@ pub trait LocalExProtocol: Send {
                     .send_request(&peer_id, LocalExAuthRequest { hostname });
             }
             RequestLocalInfo => {
+                info!("client request local info");
                 self.send_daemon_event(DaemonEvent::LocalInfo(
                     self.hostname(),
                     *self.swarm().local_peer_id(),
