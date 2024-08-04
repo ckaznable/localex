@@ -162,7 +162,7 @@ where
 
         let remaining = self.remaining - self.buf.len();
         let offset = std::cmp::min(remaining, read_size);
-        let (chunk, next_chunk) = &self.read_buf[offset_start..].split_at(offset);
+        let (chunk, next_chunk) = self.read_buf[offset_start..].split_at(offset);
         self.remaining = self.remaining.saturating_sub(chunk.len());
 
         if self.remaining == 0 {
@@ -175,7 +175,7 @@ where
         if next_chunk.is_empty() {
             self.state = ReaderState::Idle;
         } else {
-            self.read_buf = BytesMut::from(*next_chunk);
+            self.read_buf = BytesMut::from(next_chunk);
             self.state = ReaderState::Reading;
         }
 
