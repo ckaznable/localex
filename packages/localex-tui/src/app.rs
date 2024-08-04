@@ -22,7 +22,7 @@ use ratatui::{
     widgets::{Block, List, ListItem, ListState, Paragraph},
     Frame, Terminal,
 };
-use tracing::info;
+use tracing::{error, info};
 
 use crate::components::{incomming_verify::InCommingVerify, peers::Peer};
 
@@ -73,7 +73,8 @@ impl App {
         let mut reader = crossterm::event::EventStream::new();
 
         self.client.prepare().await;
-        self.client.send(ClientEvent::RequestLocalInfo).await;
+        self.client.send(ClientEvent::RequestPeerList).await?;
+        self.client.send(ClientEvent::RequestLocalInfo).await?;
 
         loop {
             self.terminal.draw(|f| Self::ui(f, &mut self.state))?;
@@ -149,9 +150,11 @@ impl App {
                 if let Some(index) = self.state.list_state.selected() {
                     if let Some(peer) = self.state.peers.get(index) {
                         info!("request verication to remote peer {}", peer.id());
-                        self.client
+                        if let Err(e)  = self.client
                             .send(ClientEvent::RequestVerify(peer.id()))
-                            .await;
+                            .await {
+                            error!("{e:?}")
+                        }
                     }
                 }
             }

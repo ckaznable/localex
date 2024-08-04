@@ -11,15 +11,10 @@ use tokio::{
         unix::{OwnedReadHalf, OwnedWriteHalf},
         UnixListener, UnixStream,
     },
-    sync::{mpsc, Mutex},
+    sync::mpsc,
     task::JoinHandle,
 };
-use tracing::error;
-
-thread_local! {
-    static WRITER_BUF: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::with_capacity(1024 * 256)));
-    static READER_BUF: Arc<Mutex<[u8; 1024 * 128]>> = Arc::new(Mutex::new([0u8; 1024 * 128]));
-}
+use tracing::{error, info};
 
 pub type IPCMsgPack<I> = (Arc<OwnedWriteHalf>, I);
 
@@ -50,36 +45,51 @@ where
         read: Arc<OwnedReadHalf>,
         write: Arc<OwnedWriteHalf>,
     ) -> Result<()> {
-        read.readable().await?;
+        let mut data = vec![];
+        let mut buffer = Vec::with_capacity(1024 * 4);
 
-        let mut buffer = Vec::with_capacity(1024 * 1024);
+        loop {
+            read.readable().await?;
+            buffer.clear();
 
-        let read_buf = READER_BUF.with(|r| r.clone());
-        let mut read_buf = read_buf.lock().await;
-
-        match read.try_read_buf(&mut buffer) {
-            Ok(0) => return Ok(()),
-            Ok(n) => {
-                let data = &buffer[..n];
-                let request: I = ciborium::from_reader_with_buffer(data, &mut *read_buf)?;
-                tx.send((write, request)).await?;
+            match read.try_read_buf(&mut buffer) {
+                Ok(0) => break,
+                Ok(n) => {
+                    info!("reading {n}byte data from stream");
+                    data.extend_from_slice(&buffer[..n]);
+                }
+                Err(ref e) if e.kind() == tokio::io::ErrorKind::WouldBlock => {}
+                Err(e) => return Err(anyhow::Error::from(e)),
             }
-            Err(ref e) if e.kind() == tokio::io::ErrorKind::WouldBlock => {}
-            Err(e) => return Err(anyhow::Error::from(e)),
         }
 
+        info!("read msg size: {}", data.len());
+        let data: &[u8] = &data;
+        let request: I = ciborium::from_reader(data)?;
+        tx.send((write, request)).await?;
         Ok(())
     }
 
     async fn send_to_stream(&self, stream: &OwnedWriteHalf, msg: &O) -> Result<()> {
-        let writer_buf = WRITER_BUF.with(|w| w.clone());
-        let mut writer_buf = writer_buf.lock().await;
+        let mut writer_buf = vec![];
+        ciborium::ser::into_writer(msg, &mut writer_buf)?;
+        info!("try to write data to stream");
 
-        writer_buf.clear();
-        ciborium::ser::into_writer(msg, &mut *writer_buf)?;
-        stream.writable().await?;
-        stream.try_write(&writer_buf)?;
-        Ok(())
+        loop {
+            stream.writable().await?;
+            match stream.try_write(&writer_buf) {
+                Err(ref e) if e.kind() == tokio::io::ErrorKind::WouldBlock => {
+                    continue;
+                }
+                Err(e) => {
+                    return Err(e.into());
+                }
+                Ok(n) => {
+                    info!("send msg size: {}", n);
+                    return Ok(())
+                }
+            }
+        }
     }
 
     async fn connect(sock: &Path) -> Result<UnixStream> {

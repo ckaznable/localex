@@ -142,6 +142,10 @@ pub trait LocalExProtocol: Send {
                 ))
                 .await;
             }
+            RequestPeerList => {
+                info!("client request peer list");
+                self.send_peers().await;
+            }
         }
 
         Ok(())

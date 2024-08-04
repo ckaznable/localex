@@ -78,11 +78,11 @@ impl IPCServer {
 
     pub async fn recv(&mut self) -> ClientEvent {
         let (stream, data) = self.recv_stream().await;
-        if let std::collections::hash_map::Entry::Vacant(e) = self.id_map.entry(data.client_id.clone()) {
+        if !self.id_map.contains_key(&data.client_id) {
             info!("{} connected", &data.client_id);
-            e.insert(stream);
         }
 
+        self.id_map.insert(data.client_id, stream);
         data.event
     }
 

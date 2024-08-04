@@ -7,6 +7,7 @@ use crate::peer::DaemonPeer;
 pub enum ClientEvent {
     RequestVerify(PeerId),
     RequestLocalInfo,
+    RequestPeerList,
     DisconnectPeer(PeerId),
     VerifyConfirm(PeerId, bool),
 }
