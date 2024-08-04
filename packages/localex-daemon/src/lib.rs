@@ -13,7 +13,7 @@ mod store;
 pub async fn main(param: config::Config) -> Result<()> {
     logger::init_logger(logger::LoggerConfig {
         filename: &param.log_file_name,
-        stdout: false,
+        stdout: true,
     })?;
 
     let store: Box<dyn DaemonDataStore + Send + Sync> = if param.no_save {
