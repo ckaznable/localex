@@ -12,8 +12,10 @@ import android.os.Binder
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import io.ckaznable.localax.rust.FfiClientEvent
 import io.ckaznable.localax.rust.FfiDaemonEvent
 import io.ckaznable.localax.rust.FfiDaemonPeer
+import io.ckaznable.localax.rust.dispatch
 import io.ckaznable.localax.rust.listen
 import io.ckaznable.localax.rust.recv
 import kotlinx.coroutines.CoroutineScope
@@ -41,7 +43,7 @@ class LocalaxService : Service() {
         fun getService(): LocalaxService = this@LocalaxService
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    override fun onBind(intent: Intent?): IBinder = binder
 
     @SuppressLint("ForegroundServiceType")
     override fun onCreate() {
@@ -70,7 +72,7 @@ class LocalaxService : Service() {
                 when (val data = recv()) {
                     is FfiDaemonEvent.InComingVerify -> handleInComingVerify(data.v1)
                     is FfiDaemonEvent.PeerList -> handlePeerList(data.v1)
-                    is FfiDaemonEvent.VerifyResult -> handleVerifyResult(data.v1, data.v2)
+                    is FfiDaemonEvent.VerifyResult -> handleVerifyResult(data.v1, data.v2, data.v3)
                     is FfiDaemonEvent.Error -> Log.d(LOG_TAG, "error: " + data.v1.toString())
                     else -> Unit
                 }
@@ -120,18 +122,20 @@ class LocalaxService : Service() {
         _serviceFlow.emit(LocalaxServiceEvent.UpdatePeerList(list))
     }
 
-    private suspend fun handleVerifyResult(peerId: ByteArray, result: Boolean) {
-        TODO()
+    private suspend fun handleVerifyResult(peerId: ByteArray, id: String, result: Boolean) {
+        _serviceFlow.emit(LocalaxServiceEvent.VerifyResult(peerId, id, result))
     }
 
     private suspend fun handleUIEvent() {
         uiFlow.collect { event ->
             when (event) {
                 is FrontendReply.ReplyVerifyRequest -> {
-                    TODO()
+                    Log.d(LOG_TAG, "client reply verify request: " + if (event.result) "YES" else "No")
+                    dispatch(FfiClientEvent.VerifyConfirm(event.peerId, event.result))
                 }
                 is FrontendReply.RequestVerify -> {
-                    TODO()
+                    Log.d(LOG_TAG, "client request verify")
+                    dispatch(FfiClientEvent.RequestVerify(event.peerId))
                 }
             }
         }
@@ -145,7 +149,7 @@ class LocalaxService : Service() {
 
     companion object {
         private const val NOTIFICATION_ID = 1
-        private const val LOG_TAG = "LibP2P"
+        private const val LOG_TAG = "LocalaxService"
         private const val CHANNEL_ID = "LocalaxListenChannel"
     }
 }

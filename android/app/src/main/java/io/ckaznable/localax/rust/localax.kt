@@ -1542,6 +1542,11 @@ sealed class FfiException : kotlin.Exception() {
             get() = ""
     }
 
+    class FfiClientEventHandleException : FfiException() {
+        override val message
+            get() = ""
+    }
+
     class Unknown : FfiException() {
         override val message
             get() = ""
@@ -1563,7 +1568,8 @@ public object FfiConverterTypeFFIError : FfiConverterRustBuffer<FfiException> {
             6 -> FfiException.ListenLibP2pException()
             7 -> FfiException.FfiConvertException()
             8 -> FfiException.FfiChannelException()
-            9 -> FfiException.Unknown()
+            9 -> FfiException.FfiClientEventHandleException()
+            10 -> FfiException.Unknown()
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
         }
 
@@ -1598,6 +1604,10 @@ public object FfiConverterTypeFFIError : FfiConverterRustBuffer<FfiException> {
                 4UL
             )
             is FfiException.FfiChannelException -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is FfiException.FfiClientEventHandleException -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
             )
@@ -1644,8 +1654,12 @@ public object FfiConverterTypeFFIError : FfiConverterRustBuffer<FfiException> {
                 buf.putInt(8)
                 Unit
             }
-            is FfiException.Unknown -> {
+            is FfiException.FfiClientEventHandleException -> {
                 buf.putInt(9)
+                Unit
+            }
+            is FfiException.Unknown -> {
+                buf.putInt(10)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
