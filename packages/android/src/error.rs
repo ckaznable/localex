@@ -16,6 +16,8 @@ pub enum FFIError {
     FFIConvertError,
     #[error("ffi channel error")]
     FFIChannelError,
+    #[error("ffi client event handle error")]
+    FFIClientEventHandleError,
     #[error("unknown error")]
     Unknown,
 }

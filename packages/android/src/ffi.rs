@@ -7,6 +7,7 @@ use crate::error::FFIError;
 pub enum FFIClientEvent {
     RequestVerify(Vec<u8>),
     RequestLocalInfo,
+    RequestPeerList,
     DisconnectPeer(Vec<u8>),
     VerifyConfirm(Vec<u8>, bool),
 }
@@ -16,6 +17,7 @@ impl From<ClientEvent> for FFIClientEvent {
         match event {
             ClientEvent::RequestVerify(p) => Self::RequestVerify(p.to_bytes()),
             ClientEvent::RequestLocalInfo => Self::RequestLocalInfo,
+            ClientEvent::RequestPeerList => Self::RequestPeerList,
             ClientEvent::DisconnectPeer(p) => Self::DisconnectPeer(p.to_bytes()),
             ClientEvent::VerifyConfirm(p, result) => Self::VerifyConfirm(p.to_bytes(), result),
         }
@@ -29,6 +31,7 @@ impl TryFrom<FFIClientEvent> for ClientEvent {
         let event = match ffi {
             FFIClientEvent::RequestVerify(p) => Self::RequestVerify(PeerId::from_bytes(&p)?),
             FFIClientEvent::RequestLocalInfo => Self::RequestLocalInfo,
+            FFIClientEvent::RequestPeerList => Self::RequestPeerList,
             FFIClientEvent::DisconnectPeer(p) => Self::DisconnectPeer(PeerId::from_bytes(&p)?),
             FFIClientEvent::VerifyConfirm(p, result) => Self::VerifyConfirm(PeerId::from_bytes(&p)?, result),
         };

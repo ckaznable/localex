@@ -122,7 +122,9 @@ impl Service {
                     }
                 } => {},
                 event = client_rx.recv() => if let Some(event) = event {
-                    let _ = self.handle_client_event(event).await;
+                    if self.handle_client_event(event).await.is_err() {
+                        let _ = self.daemon_tx.send(FFIDaemonEvent::Error(FFIError::FFIClientEventHandleError)).await;
+                    }
                 },
                 rx = quit_rx.recv()  => if rx.is_some() {
                     return;
