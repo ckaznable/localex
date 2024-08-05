@@ -66,6 +66,7 @@ where
         }
     }
 
+    #[inline]
     async fn connect(sock: &Path) -> Result<UnixStream> {
         UnixStream::connect(sock).await.map_err(anyhow::Error::from)
     }
@@ -122,7 +123,6 @@ struct StreamReader<I> {
     read_buf: BytesMut,
     buf: Vec<u8>,
     state: ReaderState,
-    size: u32,
     remaining: usize,
 }
 
@@ -142,25 +142,22 @@ where
             buf: vec![],
             read_buf: BytesMut::with_capacity(4096),
             state: ReaderState::Idle,
-            size: 0,
             remaining: 0
         }
     }
 
     async fn read_chunk(&mut self, read_size: usize) -> Result<usize> {
-        if read_size < 8 {
-            return Err(anyhow!("reading data error"));
-        }
-
-        let mut offset_start = 0usize;
+        let offset_start = 4usize;
         if self.state == ReaderState::Idle {
             let (size, _) = &self.read_buf[..read_size].split_at(4);
-            self.size = u32::from_le_bytes((*size).try_into()?);
-            self.remaining = self.size as usize;
-            offset_start = 4;
+            self.remaining = u32::from_le_bytes((*size).try_into()?) as usize;
         }
 
         let remaining = self.remaining - self.buf.len();
+        if remaining < 8 {
+            return Err(anyhow!("read chunk error"));
+        }
+
         let offset = std::cmp::min(remaining, read_size);
         let (chunk, next_chunk) = self.read_buf[offset_start..].split_at(offset);
         self.remaining = self.remaining.saturating_sub(chunk.len());
@@ -175,6 +172,7 @@ where
         if next_chunk.is_empty() {
             self.state = ReaderState::Idle;
         } else {
+            self.remaining = next_chunk.len() - 4;
             self.read_buf = BytesMut::from(next_chunk);
             self.state = ReaderState::Reading;
         }
@@ -187,7 +185,7 @@ where
 
         match self.read.try_read_buf(&mut self.read_buf) {
             Ok(0) => {
-                self.size = 0;
+                self.remaining = 0;
                 self.buf.clear();
                 self.state = ReaderState::Idle;
             },
