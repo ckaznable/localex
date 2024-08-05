@@ -147,7 +147,6 @@ where
     }
 
     async fn read_chunk(&mut self, read_size: usize) -> Result<usize> {
-        let offset_start = 4usize;
         if self.state == ReaderState::Idle {
             let (size, _) = &self.read_buf[..read_size].split_at(4);
             self.remaining = u32::from_le_bytes((*size).try_into()?) as usize;
@@ -159,7 +158,7 @@ where
         }
 
         let offset = std::cmp::min(remaining, read_size);
-        let (chunk, next_chunk) = self.read_buf[offset_start..].split_at(offset);
+        let (chunk, next_chunk) = self.read_buf[4..].split_at(offset);
         self.remaining = self.remaining.saturating_sub(chunk.len());
 
         if self.remaining == 0 {
@@ -171,6 +170,7 @@ where
         let remaining_chunk_size = next_chunk.len();
         if next_chunk.is_empty() {
             self.state = ReaderState::Idle;
+            self.remaining = 0;
         } else {
             self.remaining = next_chunk.len() - 4;
             self.read_buf = BytesMut::from(next_chunk);
@@ -184,14 +184,11 @@ where
         self.read.readable().await?;
 
         match self.read.try_read_buf(&mut self.read_buf) {
-            Ok(0) => {
-                self.remaining = 0;
-                self.buf.clear();
-                self.state = ReaderState::Idle;
-            },
+            Ok(0) => self.reset(),
             Ok(n) => {
                 loop {
                     if self.read_chunk(n).await? == 0 {
+                        self.reset();
                         break;
                     }
                 }
@@ -208,5 +205,12 @@ where
         self.tx.send((self.write.clone(), request)).await
             .map(|_| ())
             .map_err(anyhow::Error::from)
+    }
+
+    fn reset(&mut self) {
+        self.remaining = 0;
+        self.buf.clear();
+        self.state = ReaderState::Idle;
+        self.read_buf.clear();
     }
 }
