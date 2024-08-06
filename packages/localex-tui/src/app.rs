@@ -149,7 +149,7 @@ impl App {
             Enter => {
                 if let Some(index) = self.state.list_state.selected() {
                     if let Some(peer) = self.state.peers.get(index) {
-                        info!("request verication to remote peer {}", peer.id());
+                        info!("request verification to remote peer {}", peer.id());
                         if let Err(e)  = self.client
                             .send(ClientEvent::RequestVerify(peer.id()))
                             .await {
