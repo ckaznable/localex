@@ -152,15 +152,17 @@ impl IPCClient {
         data.event
     }
 
-    pub async fn send(&mut self, event: ClientEvent) -> Result<()> {
-        self.send_to_stream(
+    pub async fn send(&mut self, event: ClientEvent) {
+        if let Err(e) = self.send_to_stream(
             &self.stream_write,
             &IPCEventRequest {
                 client_id: self.id.clone(),
                 event,
             },
         )
-        .await
+        .await {
+            error!("{e:?}");
+        }
     }
 }
 
