@@ -1,6 +1,6 @@
 use std::{
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::Arc, time::Duration,
 };
 
 use anyhow::{anyhow, Result};
@@ -50,20 +50,32 @@ where
         buffer.put_slice(&size_bytes);
         buffer.put_slice(&writer_buf);
 
-        loop {
+        let mut attempts = 0;
+        let max_attempts = 5;
+        let mut sent = 0;
+
+        while sent < buffer.len() {
             stream.writable().await?;
-            match stream.try_write(&buffer) {
+            match stream.try_write(&buffer[sent..]) {
+                Ok(n) => {
+                    sent += n;
+                    attempts = 0;
+                }
                 Err(ref e) if e.kind() == tokio::io::ErrorKind::WouldBlock => {
+                    attempts += 1;
+                    if attempts >= max_attempts {
+                        return Err(anyhow!("Max retry attempts reached"));
+                    }
+                    tokio::time::sleep(Duration::from_millis(100)).await;
                     continue;
                 }
                 Err(e) => {
                     return Err(e.into());
                 }
-                Ok(_) => {
-                    return Ok(())
-                }
             }
         }
+        
+        Ok(())
     }
 
     #[inline]
