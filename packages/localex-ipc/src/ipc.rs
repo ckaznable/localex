@@ -95,8 +95,10 @@ where
             loop {
                 if let Err(err) = reader.read().await {
                     error!("{err:?}");
+                    break;
                 }
             }
+            Ok(())
         });
 
         Ok(handle)
@@ -109,16 +111,27 @@ where
             let listener = UnixListener::bind(sock_path)?;
             loop {
                 if let Ok((stream, _)) = listener.accept().await {
-                    let (read, write) = stream.into_split();
-                    let mut reader = StreamReader::new(tx.clone(), Arc::new(read), Arc::new(write));
-                    if let Err(err) = reader.read().await {
-                        error!("{err:?}");
-                    }
+                let tx = tx.clone();
+                    tokio::spawn(async move {
+                        Self::handle_accept_connection(stream, tx).await;
+                    });
                 }
             }
         });
 
         Ok(handle)
+    }
+
+    async fn handle_accept_connection(stream: UnixStream, tx: mpsc::Sender<IPCMsgPack<I>>) {
+        let (read, write) = stream.into_split();
+        let mut reader = StreamReader::new(tx, Arc::new(read), Arc::new(write));
+
+        loop {
+            if let Err(err) = reader.read().await {
+                error!("handle connection error: {err:?}");
+                break;
+            }
+        }
     }
 }
 
@@ -154,7 +167,7 @@ where
             buf: vec![],
             read_buf: BytesMut::with_capacity(4096),
             state: ReaderState::Idle,
-            remaining: 0
+            remaining: 0,
         }
     }
 
