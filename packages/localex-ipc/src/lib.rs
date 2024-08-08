@@ -89,6 +89,9 @@ impl IPCServer {
     pub fn release(&mut self) {
         self.id_map.drain().for_each(|(_, s)| drop(s));
         let _ = fs::remove_file(&self.sock);
+        if let Some(handle) = self.listen_handle.take() {
+            handle.abort();
+        }
     }
 }
 
