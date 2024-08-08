@@ -1,17 +1,13 @@
-use std::{collections::{BTreeMap, HashMap}, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+};
 
 use async_trait::async_trait;
-use common::{
-    auth::LocalExAuthResponse,
-    event::DaemonEvent,
-    peer::DaemonPeer,
-};
+use common::{auth::LocalExAuthResponse, event::DaemonEvent, peer::DaemonPeer};
 use futures::StreamExt;
 use libp2p::{
-    gossipsub::TopicHash,
-    identity::Keypair,
-    request_response::ResponseChannel,
-    swarm::SwarmEvent,
+    gossipsub::TopicHash, identity::Keypair, request_response::ResponseChannel, swarm::SwarmEvent,
     PeerId, Swarm,
 };
 use network::{new_swarm, LocalExBehaviour, LocalExBehaviourEvent};
@@ -92,10 +88,7 @@ impl Service {
         })
     }
 
-    pub async fn run(
-        &mut self,
-        mut quit_rx: mpsc::Receiver<bool>,
-    ) {
+    pub async fn run(&mut self, mut quit_rx: mpsc::Receiver<bool>) {
         let rx = get_client_event_receiver().unwrap();
         let mut client_rx = rx.lock().await;
 
@@ -157,15 +150,19 @@ impl LocalExProtocol for Service {
         self.peers.values().cloned().collect()
     }
 
+    /// implement in android side
     fn save_peers(&mut self) -> anyhow::Result<()> {
-        todo!()
+        Ok(())
     }
 
-    fn on_remove_peer(&mut self, _: &PeerId) { }
+    fn on_remove_peer(&mut self, _: &PeerId) {}
 
-    fn on_add_peer(&mut self, _: PeerId) { }
+    fn on_add_peer(&mut self, _: PeerId) {}
 
     async fn send_daemon_event(&mut self, event: DaemonEvent) -> anyhow::Result<()> {
-        self.daemon_tx.send(event.into()).await.map_err(anyhow::Error::from)
+        self.daemon_tx
+            .send(event.into())
+            .await
+            .map_err(anyhow::Error::from)
     }
 }
