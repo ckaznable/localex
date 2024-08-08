@@ -15,7 +15,7 @@ use tokio::{
     sync::mpsc,
     task::JoinHandle,
 };
-use tracing::error;
+use tracing::{error, info};
 
 pub type IPCMsgPack<I> = (Arc<OwnedWriteHalf>, I);
 
@@ -58,6 +58,7 @@ where
             stream.writable().await?;
             match stream.try_write(&buffer[sent..]) {
                 Ok(n) => {
+                    info!("write {} bytes to stream", n);
                     sent += n;
                     attempts = 0;
                 }
@@ -111,7 +112,8 @@ where
             let listener = UnixListener::bind(sock_path)?;
             loop {
                 if let Ok((stream, _)) = listener.accept().await {
-                let tx = tx.clone();
+                    let tx = tx.clone();
+                    info!("new accept stream incoming");
                     tokio::spawn(async move {
                         Self::handle_accept_connection(stream, tx).await;
                     });
@@ -135,20 +137,13 @@ where
     }
 }
 
-#[derive(Copy, Clone, Eq, PartialEq)]
-enum ReaderState {
-    Reading,
-    Idle,
-}
-
 struct StreamReader<I> {
     tx: mpsc::Sender<IPCMsgPack<I>>,
     read: Arc<OwnedReadHalf>,
     write: Arc<OwnedWriteHalf>,
     read_buf: BytesMut,
     buf: Vec<u8>,
-    state: ReaderState,
-    remaining: usize,
+    reading_size: usize,
 }
 
 impl<I> StreamReader<I>
@@ -166,57 +161,55 @@ where
             write,
             buf: vec![],
             read_buf: BytesMut::with_capacity(4096),
-            state: ReaderState::Idle,
-            remaining: 0,
+            reading_size: 0,
         }
     }
 
-    async fn read_chunk(&mut self, read_size: usize) -> Result<usize> {
-        if self.state == ReaderState::Idle {
-            let (size, _) = &self.read_buf[..read_size].split_at(4);
-            self.remaining = u32::from_le_bytes((*size).try_into()?) as usize;
+    async fn read_chunk(&mut self, packet_size: usize) -> Result<()> {
+        if self.read_buf.len() < 4 {
+            return Err(anyhow!("reading chunk error"));
         }
 
-        let remaining = self.remaining - self.buf.len();
-        if remaining < 8 {
-            return Err(anyhow!("read chunk error"));
+        let mut read = 0usize;
+        while read < packet_size {
+            if self.buf.is_empty() {
+                let size_byte = &self.read_buf[read..read+4];
+                self.reading_size = u32::from_le_bytes((*size_byte).try_into()?) as usize;
+                info!("reading chunk size: {}", self.reading_size);
+                read += 4;
+            }
+
+            let remaining = self.reading_size - self.buf.len();
+            let remaining = if packet_size < read + remaining {
+                packet_size - read + 1
+            } else {
+                remaining
+            };
+
+            if remaining > 0 {
+                self.buf.extend_from_slice(&self.read_buf[read..read + remaining]);
+                read += remaining;
+            }
+
+            if self.buf.len() == self.reading_size {
+                self.send(&self.buf).await?;
+                self.buf.clear();
+                self.reading_size = 0;
+            }
         }
 
-        let offset = std::cmp::min(remaining, read_size);
-        let (chunk, next_chunk) = self.read_buf[4..].split_at(offset);
-        self.remaining = self.remaining.saturating_sub(chunk.len());
-
-        if self.remaining == 0 {
-            self.buf.extend_from_slice(chunk);
-            self.send(&self.buf).await?;
-            self.buf.clear();
-        }
-
-        let remaining_chunk_size = next_chunk.len();
-        if next_chunk.is_empty() {
-            self.state = ReaderState::Idle;
-            self.remaining = 0;
-        } else {
-            self.remaining = next_chunk.len() - 4;
-            self.read_buf = BytesMut::from(next_chunk);
-            self.state = ReaderState::Reading;
-        }
-
-        Ok(remaining_chunk_size)
+        Ok(())
     }
 
     async fn read(&mut self) -> Result<()> {
         self.read.readable().await?;
 
         match self.read.try_read_buf(&mut self.read_buf) {
-            Ok(0) => self.reset(),
+            Ok(0) => {},
             Ok(n) => {
-                loop {
-                    if self.read_chunk(n).await? == 0 {
-                        self.reset();
-                        break;
-                    }
-                }
+                info!("read {} bytes from stream", n);
+                self.read_chunk(n).await?;
+                self.read_buf.clear();
             },
             Err(ref e) if e.kind() == tokio::io::ErrorKind::WouldBlock => {},
             Err(e) => return Err(anyhow::Error::from(e)),
@@ -230,12 +223,5 @@ where
         self.tx.send((self.write.clone(), request)).await
             .map(|_| ())
             .map_err(anyhow::Error::from)
-    }
-
-    fn reset(&mut self) {
-        self.remaining = 0;
-        self.buf.clear();
-        self.state = ReaderState::Idle;
-        self.read_buf.clear();
     }
 }
