@@ -12,7 +12,7 @@ use tokio::{
         unix::{OwnedReadHalf, OwnedWriteHalf},
         UnixListener, UnixStream,
     },
-    sync::mpsc,
+    sync::{broadcast, mpsc},
     task::JoinHandle,
 };
 use tracing::{error, info};
@@ -27,6 +27,7 @@ where
 {
     fn ipc_tx(&self) -> mpsc::Sender<IPCMsgPack<I>>;
     fn ipc_rx(&mut self) -> &mut mpsc::Receiver<IPCMsgPack<I>>;
+    fn ctrlc_rx(&self) -> broadcast::Receiver<()>;
 
     #[allow(clippy::type_complexity)]
     fn get_ipc_channel() -> (mpsc::Sender<IPCMsgPack<I>>, mpsc::Receiver<IPCMsgPack<I>>) {
@@ -107,31 +108,43 @@ where
 
     async fn listen(&self, sock_path: PathBuf) -> Result<JoinHandle<Result<()>>> {
         let tx = self.ipc_tx();
+        let crx = self.ctrlc_rx();
 
         let handle = tokio::spawn(async move {
             let listener = UnixListener::bind(sock_path)?;
+            let mut ctrlc_rx_out = crx.resubscribe();
+            let ctrlc_rx_inner = crx.resubscribe();
+
             loop {
-                if let Ok((stream, _)) = listener.accept().await {
-                    let tx = tx.clone();
-                    info!("new accept stream incoming");
-                    tokio::spawn(async move {
-                        Self::handle_accept_connection(stream, tx).await;
-                    });
+                tokio::select! {
+                    _ = ctrlc_rx_out.recv() => break,
+                    r = listener.accept() => if let Ok((stream, _)) = r {
+                        let crx = ctrlc_rx_inner.resubscribe();
+                        let tx = tx.clone();
+                        info!("new accept stream incoming");
+                        tokio::spawn(async move {
+                            Self::handle_accept_connection(stream, tx, crx).await;
+                        });
+                    }
                 }
             }
+
+            Ok(())
         });
 
         Ok(handle)
     }
 
-    async fn handle_accept_connection(stream: UnixStream, tx: mpsc::Sender<IPCMsgPack<I>>) {
+    async fn handle_accept_connection(stream: UnixStream, tx: mpsc::Sender<IPCMsgPack<I>>, mut ctrlc_rx: broadcast::Receiver<()>) {
         let (read, write) = stream.into_split();
         let mut reader = StreamReader::new(tx, Arc::new(read), Arc::new(write));
-
         loop {
-            if let Err(err) = reader.read().await {
-                error!("handle connection error: {err:?}");
-                break;
+            tokio::select! {
+                _ = ctrlc_rx.recv() => break,
+                r = reader.read() => if let Err(err) = r {
+                    error!("handle connection error: {err:?}");
+                    break;
+                },
             }
         }
     }

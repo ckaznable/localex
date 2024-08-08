@@ -22,6 +22,7 @@ use ratatui::{
     widgets::{Block, List, ListItem, ListState, Paragraph},
     Frame, Terminal,
 };
+use tokio::sync::broadcast;
 use tracing::info;
 
 use crate::components::{incomming_verify::InCommingVerify, peers::Peer};
@@ -47,11 +48,13 @@ pub struct App {
     state: AppState,
     should_quit: bool,
     client: IPCClient,
+    quit_tx: broadcast::Sender<()>,
 }
 
 impl App {
     pub async fn new(sock: Option<PathBuf>) -> Result<Self> {
-        let client = IPCClient::new(sock).await?;
+        let (quit_tx, rx) = broadcast::channel(10);
+        let client = IPCClient::new(sock, rx).await?;
 
         // setup terminal
         enable_raw_mode()?;
@@ -62,6 +65,7 @@ impl App {
         let terminal = Terminal::new(backend)?;
 
         Ok(Self {
+            quit_tx,
             terminal,
             client,
             state: AppState::default(),
@@ -90,6 +94,7 @@ impl App {
             }
 
             if self.should_quit {
+                let _ = self.quit_tx.send(());
                 return Ok(());
             }
         }

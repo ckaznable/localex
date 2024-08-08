@@ -6,7 +6,7 @@ use std::{
 use anyhow::Result;
 use async_trait::async_trait;
 use common::{auth::LocalExAuthResponse, event::DaemonEvent, peer::DaemonPeer};
-use futures::{executor::block_on, StreamExt};
+use futures::StreamExt;
 use libp2p::{
     gossipsub::TopicHash, identity::Keypair, request_response::ResponseChannel, swarm::SwarmEvent,
     PeerId, Swarm,
@@ -14,7 +14,7 @@ use libp2p::{
 use localex_ipc::IPCServer;
 use network::LocalExBehaviour;
 use protocol::{GossipTopic, LocalExProtocol};
-use tokio::sync::mpsc;
+use tokio::sync::broadcast;
 use tracing::error;
 
 use crate::store::DaemonDataStore;
@@ -25,7 +25,7 @@ pub struct Daemon {
     topics: HashMap<GossipTopic, TopicHash>,
     auth_channels: HashMap<PeerId, ResponseChannel<LocalExAuthResponse>>,
     hostname: String,
-    ctrlc_rx: mpsc::Receiver<()>,
+    ctrlc_rx: broadcast::Receiver<()>,
     store: Box<dyn DaemonDataStore + Send + Sync>,
 }
 
@@ -36,13 +36,13 @@ impl Daemon {
         sock: Option<PathBuf>,
         store: Box<dyn DaemonDataStore + Send + Sync>,
     ) -> Result<Self> {
-        let server = IPCServer::new(sock)?;
-        let swarm = network::new_swarm(local_keypair)?;
-
-        let (tx, rx) = mpsc::channel(1);
+        let (tx, rx) = broadcast::channel(10);
         let _ = ctrlc::set_handler(move || {
-            block_on(async { tx.send(()).await }).expect("close application error");
+            tx.send(()).expect("close application error");
         });
+
+        let server = IPCServer::new(sock, rx.resubscribe())?;
+        let swarm = network::new_swarm(local_keypair)?;
 
         Ok(Self {
             swarm,

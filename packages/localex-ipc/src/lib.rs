@@ -11,7 +11,7 @@ use ipc::{IPCMsgPack, IPC};
 use common::event::{ClientEvent, DaemonEvent};
 use tokio::{
     net::unix::{OwnedReadHalf, OwnedWriteHalf},
-    sync::mpsc,
+    sync::{broadcast, mpsc},
     task::JoinHandle,
 };
 use tracing::{error, info};
@@ -22,13 +22,14 @@ pub type RequestFromServer = IPCEventResponse<DaemonEvent>;
 pub struct IPCServer {
     tx: mpsc::Sender<IPCMsgPack<RequestFromClient>>,
     rx: mpsc::Receiver<IPCMsgPack<RequestFromClient>>,
+    ctrlc_rx: broadcast::Receiver<()>,
     id_map: HashMap<String, Arc<OwnedWriteHalf>>,
     listen_handle: Option<JoinHandle<Result<()>>>,
     sock: PathBuf,
 }
 
 impl IPCServer {
-    pub fn new(sock_path: Option<PathBuf>) -> Result<Self> {
+    pub fn new(sock_path: Option<PathBuf>, ctrlc_rx: broadcast::Receiver<()>) -> Result<Self> {
         let sock_path = sock_path.unwrap_or_else(|| sock::get_sock_mount_path().into());
 
         if sock_path.exists() {
@@ -38,6 +39,7 @@ impl IPCServer {
             Ok(Self {
                 tx,
                 rx,
+                ctrlc_rx,
                 sock: sock_path,
                 id_map: HashMap::new(),
                 listen_handle: None,
@@ -89,9 +91,6 @@ impl IPCServer {
     pub fn release(&mut self) {
         self.id_map.drain().for_each(|(_, s)| drop(s));
         let _ = fs::remove_file(&self.sock);
-        if let Some(handle) = self.listen_handle.take() {
-            handle.abort();
-        }
     }
 }
 
@@ -104,6 +103,10 @@ impl IPC<RequestFromClient, RequestFromServer> for IPCServer {
     fn ipc_rx(&mut self) -> &mut mpsc::Receiver<IPCMsgPack<RequestFromClient>> {
         &mut self.rx
     }
+
+    fn ctrlc_rx(&self) -> broadcast::Receiver<()> {
+        self.ctrlc_rx.resubscribe()
+    }
 }
 
 impl Drop for IPCServer {
@@ -115,6 +118,7 @@ impl Drop for IPCServer {
 pub struct IPCClient {
     tx: mpsc::Sender<IPCMsgPack<RequestFromServer>>,
     rx: mpsc::Receiver<IPCMsgPack<RequestFromServer>>,
+    ctrlc_rx: broadcast::Receiver<()>,
     stream_read: Option<Arc<OwnedReadHalf>>,
     stream_write: Arc<OwnedWriteHalf>,
     stream_handle: Option<JoinHandle<Result<()>>>,
@@ -122,7 +126,7 @@ pub struct IPCClient {
 }
 
 impl IPCClient {
-    pub async fn new(sock_path: Option<PathBuf>) -> Result<Self> {
+    pub async fn new(sock_path: Option<PathBuf>, ctrlc_rx: broadcast::Receiver<()>,) -> Result<Self> {
         let sock_path = sock_path.unwrap_or_else(|| sock::get_sock_mount_path().into());
         if sock_path.exists() {
             let (tx, rx) = Self::get_ipc_channel();
@@ -132,6 +136,7 @@ impl IPCClient {
             Ok(Self {
                 tx,
                 rx,
+                ctrlc_rx,
                 stream_read: Some(Arc::new(read)),
                 stream_write: Arc::new(write),
                 stream_handle: None,
@@ -177,5 +182,9 @@ impl IPC<RequestFromServer, RequestFromClient> for IPCClient {
 
     fn ipc_rx(&mut self) -> &mut mpsc::Receiver<IPCMsgPack<RequestFromServer>> {
         &mut self.rx
+    }
+
+    fn ctrlc_rx(&self) -> broadcast::Receiver<()> {
+        self.ctrlc_rx.resubscribe()
     }
 }
