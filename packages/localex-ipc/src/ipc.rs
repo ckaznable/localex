@@ -91,13 +91,17 @@ where
         write: Arc<OwnedWriteHalf>,
     ) -> Result<JoinHandle<Result<()>>> {
         let tx = self.ipc_tx();
+        let mut crx = self.ctrlc_rx();
 
         let handle = tokio::spawn(async move {
             let mut reader = StreamReader::new(tx.clone(), read.clone(), write.clone());
             loop {
-                if let Err(err) = reader.read().await {
-                    error!("{err:?}");
-                    break;
+                tokio::select! {
+                    _ = crx.recv() => break,
+                    r = reader.read() => if let Err(err) = r {
+                        error!("{err:?}");
+                        break;
+                    }
                 }
             }
             Ok(())
