@@ -1246,6 +1246,8 @@ sealed class FfiClientEvent {
 
     object RequestLocalInfo : FfiClientEvent()
 
+    object RequestPeerList : FfiClientEvent()
+
     data class DisconnectPeer(
         val v1: kotlin.ByteArray,
     ) : FfiClientEvent() {
@@ -1270,11 +1272,12 @@ public object FfiConverterTypeFFIClientEvent : FfiConverterRustBuffer<FfiClientE
                     FfiConverterByteArray.read(buf),
                 )
             2 -> FfiClientEvent.RequestLocalInfo
-            3 ->
+            3 -> FfiClientEvent.RequestPeerList
+            4 ->
                 FfiClientEvent.DisconnectPeer(
                     FfiConverterByteArray.read(buf),
                 )
-            4 ->
+            5 ->
                 FfiClientEvent.VerifyConfirm(
                     FfiConverterByteArray.read(buf),
                     FfiConverterBoolean.read(buf),
@@ -1292,6 +1295,12 @@ public object FfiConverterTypeFFIClientEvent : FfiConverterRustBuffer<FfiClientE
                 )
             }
             is FfiClientEvent.RequestLocalInfo -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+            is FfiClientEvent.RequestPeerList -> {
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 (
                     4UL
@@ -1328,13 +1337,17 @@ public object FfiConverterTypeFFIClientEvent : FfiConverterRustBuffer<FfiClientE
                 buf.putInt(2)
                 Unit
             }
-            is FfiClientEvent.DisconnectPeer -> {
+            is FfiClientEvent.RequestPeerList -> {
                 buf.putInt(3)
+                Unit
+            }
+            is FfiClientEvent.DisconnectPeer -> {
+                buf.putInt(4)
                 FfiConverterByteArray.write(value.v1, buf)
                 Unit
             }
             is FfiClientEvent.VerifyConfirm -> {
-                buf.putInt(4)
+                buf.putInt(5)
                 FfiConverterByteArray.write(value.v1, buf)
                 FfiConverterBoolean.write(value.v2, buf)
                 Unit
@@ -1377,6 +1390,12 @@ sealed class FfiDaemonEvent {
         companion object
     }
 
+    data class Log(
+        val v1: kotlin.String,
+    ) : FfiDaemonEvent() {
+        companion object
+    }
+
     object Unknown : FfiDaemonEvent()
 
     companion object
@@ -1408,7 +1427,11 @@ public object FfiConverterTypeFFIDaemonEvent : FfiConverterRustBuffer<FfiDaemonE
                 FfiDaemonEvent.Error(
                     FfiConverterTypeFFIError.read(buf),
                 )
-            6 -> FfiDaemonEvent.Unknown
+            6 ->
+                FfiDaemonEvent.Log(
+                    FfiConverterString.read(buf),
+                )
+            7 -> FfiDaemonEvent.Unknown
             else -> throw RuntimeException("invalid enum value, something is very wrong!!")
         }
 
@@ -1452,6 +1475,13 @@ public object FfiConverterTypeFFIDaemonEvent : FfiConverterRustBuffer<FfiDaemonE
                         FfiConverterTypeFFIError.allocationSize(value.v1)
                 )
             }
+            is FfiDaemonEvent.Log -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterString.allocationSize(value.v1)
+                )
+            }
             is FfiDaemonEvent.Unknown -> {
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 (
@@ -1493,8 +1523,13 @@ public object FfiConverterTypeFFIDaemonEvent : FfiConverterRustBuffer<FfiDaemonE
                 FfiConverterTypeFFIError.write(value.v1, buf)
                 Unit
             }
-            is FfiDaemonEvent.Unknown -> {
+            is FfiDaemonEvent.Log -> {
                 buf.putInt(6)
+                FfiConverterString.write(value.v1, buf)
+                Unit
+            }
+            is FfiDaemonEvent.Unknown -> {
+                buf.putInt(7)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
