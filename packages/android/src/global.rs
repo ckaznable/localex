@@ -3,7 +3,7 @@ use std::sync::Arc;
 use libp2p::identity::Keypair;
 use tokio::sync::{mpsc, Mutex};
 
-use crate::{error::FFIError, ffi::FFIDaemonEvent, service::ServiceManager};
+use crate::{error::FFIError, ffi::{FFIClientEvent, FFIDaemonEvent}, service::ServiceManager};
 
 type ChannelSender<T> = mpsc::Sender<T>;
 type ChannelReceiver<T> = Arc<Mutex<mpsc::Receiver<T>>>;
@@ -12,6 +12,9 @@ pub static mut SERVICE: Option<Arc<Mutex<ServiceManager>>> = None;
 
 pub static mut SENDER: Option<ChannelSender<FFIDaemonEvent>> = None;
 pub static mut RECEIVER: Option<ChannelReceiver<FFIDaemonEvent>> = None;
+
+pub static mut CLIENT_EVENT_SENDER: Option<ChannelSender<FFIClientEvent>> = None;
+pub static mut CLIENT_EVENT_RECEIVER: Option<ChannelReceiver<FFIClientEvent>> = None;
 
 pub fn get_service() -> Result<Arc<Mutex<ServiceManager>>, FFIError> {
     get_or_create_service(None, None, None)
@@ -49,6 +52,35 @@ pub fn get_or_create_channel() -> Result<(ChannelSender<FFIDaemonEvent>, Channel
                 let rx = Arc::new(Mutex::new(rx));
                 SENDER = Some(tx.clone());
                 RECEIVER = Some(rx.clone());
+
+                Ok((tx, rx))
+            })
+    }
+}
+
+pub fn get_client_event_sender() -> Result<ChannelSender<FFIClientEvent>, FFIError> {
+    unsafe {
+        CLIENT_EVENT_SENDER.clone().ok_or(FFIError::FFIClientEventHandleError)
+    }
+}
+
+pub fn get_client_event_receiver() -> Result<ChannelReceiver<FFIClientEvent>, FFIError> {
+    unsafe {
+        CLIENT_EVENT_RECEIVER.clone().ok_or(FFIError::FFIClientEventHandleError)
+    }
+}
+
+pub fn get_or_create_client_event_channel() -> Result<(ChannelSender<FFIClientEvent>, ChannelReceiver<FFIClientEvent>), FFIError> {
+    unsafe {
+        CLIENT_EVENT_SENDER
+            .clone()
+            .zip(CLIENT_EVENT_RECEIVER.clone())
+            .map(Ok)
+            .unwrap_or_else(|| {
+                let (tx, rx) = mpsc::channel(16);
+                let rx = Arc::new(Mutex::new(rx));
+                CLIENT_EVENT_SENDER = Some(tx.clone());
+                CLIENT_EVENT_RECEIVER = Some(rx.clone());
 
                 Ok((tx, rx))
             })

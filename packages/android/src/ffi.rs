@@ -47,6 +47,7 @@ pub enum FFIDaemonEvent {
     PeerList(Vec<FFIDaemonPeer>),
     LocalInfo(String, Vec<u8>),
     Error(FFIError),
+    Log(String),
     Unknown,
 }
 

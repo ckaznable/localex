@@ -20,6 +20,7 @@ pub fn init(hostname: String, bytekey: Option<Vec<u8>>) -> Result<(), FFIError> 
     #[cfg(target_os = "android")]
     init_logger();
 
+    get_or_create_client_event_channel()?;
     bytekey
         .and_then(|secret| Keypair::from_protobuf_encoding(&secret).ok())
         .or_else(|| Some(Keypair::generate_ed25519()))
@@ -32,11 +33,9 @@ pub fn init(hostname: String, bytekey: Option<Vec<u8>>) -> Result<(), FFIError> 
 #[uniffi::export(async_runtime = "tokio")]
 pub async fn dispatch(event: FFIClientEvent) -> Result<(), FFIError> {
     let event = ClientEvent::try_from(event).map_err(|_| FFIError::FFIConvertError)?; 
-    get_service()
+    get_client_event_sender()
         .map_err(|_| FFIError::FFIChannelError)?
-        .lock()
-        .await
-        .dispatch(event)
+        .send(event.into())
         .await
         .map_err(|_| FFIError::FFIChannelError)
 }

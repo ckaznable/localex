@@ -3,7 +3,7 @@ use std::{collections::{BTreeMap, HashMap}, sync::Arc};
 use async_trait::async_trait;
 use common::{
     auth::LocalExAuthResponse,
-    event::{ClientEvent, DaemonEvent},
+    event::DaemonEvent,
     peer::DaemonPeer,
 };
 use futures::StreamExt;
@@ -18,12 +18,10 @@ use network::{new_swarm, LocalExBehaviour, LocalExBehaviourEvent};
 use protocol::{GossipTopic, LocalExProtocol};
 use tokio::sync::{mpsc, Mutex};
 
-use crate::{error::FFIError, ffi::FFIDaemonEvent};
+use crate::{error::FFIError, ffi::FFIDaemonEvent, get_client_event_receiver};
 
 pub struct ServiceManager {
     service: Arc<Mutex<Service>>,
-    client_tx: mpsc::Sender<ClientEvent>,
-    client_rx: Option<mpsc::Receiver<ClientEvent>>,
     quit_tx: mpsc::Sender<bool>,
     quit_rx: Option<mpsc::Receiver<bool>>,
     daemon_tx: mpsc::Sender<FFIDaemonEvent>,
@@ -36,29 +34,18 @@ impl ServiceManager {
         daemon_tx: mpsc::Sender<FFIDaemonEvent>,
     ) -> anyhow::Result<Self> {
         let service = Service::new(local_keypair, hostname, daemon_tx.clone())?;
-        let (client_tx, client_rx) = mpsc::channel(16);
         let (quit_tx, quit_rx) = mpsc::channel(1);
 
         Ok(Self {
             service: Arc::new(Mutex::new(service)),
-            client_tx,
-            client_rx: Some(client_rx),
             quit_tx,
             quit_rx: Some(quit_rx),
             daemon_tx,
         })
     }
 
-    pub async fn dispatch(&self, event: ClientEvent) -> anyhow::Result<()> {
-        self.client_tx
-            .send(event)
-            .await
-            .map(|_| ())
-            .map_err(|_| anyhow::anyhow!("dispatch error"))
-    }
-
     pub async fn listen(&mut self) -> anyhow::Result<()> {
-        if let (Some(client_rx), Some(quit_rx)) = (self.client_rx.take(), self.quit_rx.take()) {
+        if let Some(quit_rx) = self.quit_rx.take() {
             let service = self.service.clone();
             let daemon_tx = self.daemon_tx.clone();
             let mut guard = service.lock().await;
@@ -69,7 +56,7 @@ impl ServiceManager {
                     .await;
             }
 
-            guard.run(client_rx, quit_rx).await;
+            guard.run(quit_rx).await;
         }
 
         Ok(())
@@ -107,9 +94,11 @@ impl Service {
 
     pub async fn run(
         &mut self,
-        mut client_rx: mpsc::Receiver<ClientEvent>,
         mut quit_rx: mpsc::Receiver<bool>,
     ) {
+        let rx = get_client_event_receiver().unwrap();
+        let mut client_rx = rx.lock().await;
+
         loop {
             tokio::select! {
                 _ = async {
@@ -122,7 +111,7 @@ impl Service {
                     }
                 } => {},
                 event = client_rx.recv() => if let Some(event) = event {
-                    if self.handle_client_event(event).await.is_err() {
+                    if self.handle_client_event(event.try_into().unwrap()).await.is_err() {
                         let _ = self.daemon_tx.send(FFIDaemonEvent::Error(FFIError::FFIClientEventHandleError)).await;
                     }
                 },
