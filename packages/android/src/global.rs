@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use libp2p::identity::Keypair;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{broadcast, mpsc, Mutex};
 
 use crate::{error::FFIError, ffi::{FFIClientEvent, FFIDaemonEvent}, service::ServiceManager};
 
@@ -15,6 +15,9 @@ pub static mut RECEIVER: Option<ChannelReceiver<FFIDaemonEvent>> = None;
 
 pub static mut CLIENT_EVENT_SENDER: Option<ChannelSender<FFIClientEvent>> = None;
 pub static mut CLIENT_EVENT_RECEIVER: Option<ChannelReceiver<FFIClientEvent>> = None;
+
+pub static mut QUIT_SENDER: Option<broadcast::Sender<()>> = None;
+pub static mut QUIT_RECEIVER: Option<broadcast::Receiver<()>> = None;
 
 pub fn get_service() -> Result<Arc<Mutex<ServiceManager>>, FFIError> {
     get_or_create_service(None, None, None)
@@ -87,3 +90,26 @@ pub fn get_or_create_client_event_channel() -> Result<(ChannelSender<FFIClientEv
     }
 }
 
+pub fn init_quit_channel() {
+    unsafe {
+        let (tx, rx) = broadcast::channel(16);
+        QUIT_SENDER = Some(tx);
+        QUIT_RECEIVER = Some(rx);
+    }
+}
+
+pub fn broadcast_quit() {
+    unsafe {
+        QUIT_SENDER.as_ref().map(|tx| tx.send(()).ok());
+    }
+}
+
+pub fn get_quit_rx() -> Result<broadcast::Receiver<()>, FFIError> {
+    unsafe {
+        if let Some(recv) = QUIT_RECEIVER.as_ref() {
+            Ok(recv.resubscribe())
+        } else {
+            Err(FFIError::InitError)
+        }
+    }
+}

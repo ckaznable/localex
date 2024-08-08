@@ -20,6 +20,7 @@ pub fn init(hostname: String, bytekey: Option<Vec<u8>>) -> Result<(), FFIError> 
     #[cfg(target_os = "android")]
     init_logger();
 
+    init_quit_channel();
     get_or_create_client_event_channel()?;
     bytekey
         .and_then(|secret| Keypair::from_protobuf_encoding(&secret).ok())
@@ -74,12 +75,7 @@ pub fn get_keypair() -> Option<Vec<u8>> {
 
 #[uniffi::export(async_runtime = "tokio")]
 pub async fn stop() -> Result<(), FFIError> {
-    get_service()
-        .map_err(|_| FFIError::Unknown)?
-        .lock()
-        .await
-        .quit()
-        .await;
+    broadcast_quit();
 
     unsafe {
         let _ = SERVICE.take();

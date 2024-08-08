@@ -14,12 +14,10 @@ use network::{new_swarm, LocalExBehaviour, LocalExBehaviourEvent};
 use protocol::{GossipTopic, LocalExProtocol};
 use tokio::sync::{mpsc, Mutex};
 
-use crate::{error::FFIError, ffi::FFIDaemonEvent, get_client_event_receiver};
+use crate::{error::FFIError, ffi::FFIDaemonEvent, get_client_event_receiver, get_quit_rx};
 
 pub struct ServiceManager {
     service: Arc<Mutex<Service>>,
-    quit_tx: mpsc::Sender<bool>,
-    quit_rx: Option<mpsc::Receiver<bool>>,
     daemon_tx: mpsc::Sender<FFIDaemonEvent>,
 }
 
@@ -30,36 +28,26 @@ impl ServiceManager {
         daemon_tx: mpsc::Sender<FFIDaemonEvent>,
     ) -> anyhow::Result<Self> {
         let service = Service::new(local_keypair, hostname, daemon_tx.clone())?;
-        let (quit_tx, quit_rx) = mpsc::channel(1);
 
         Ok(Self {
             service: Arc::new(Mutex::new(service)),
-            quit_tx,
-            quit_rx: Some(quit_rx),
             daemon_tx,
         })
     }
 
     pub async fn listen(&mut self) -> anyhow::Result<()> {
-        if let Some(quit_rx) = self.quit_rx.take() {
-            let service = self.service.clone();
-            let daemon_tx = self.daemon_tx.clone();
-            let mut guard = service.lock().await;
+        let service = self.service.clone();
+        let daemon_tx = self.daemon_tx.clone();
+        let mut guard = service.lock().await;
 
-            if guard.listen_on().is_err() {
-                let _ = daemon_tx
-                    .send(FFIDaemonEvent::Error(FFIError::ListenLibP2PError))
-                    .await;
-            }
-
-            guard.run(quit_rx).await;
+        if guard.listen_on().is_err() {
+            let _ = daemon_tx
+                .send(FFIDaemonEvent::Error(FFIError::ListenLibP2PError))
+                .await;
         }
 
+        guard.run().await;
         Ok(())
-    }
-
-    pub async fn quit(&self) {
-        let _ = self.quit_tx.send(true).await;
     }
 }
 
@@ -88,9 +76,10 @@ impl Service {
         })
     }
 
-    pub async fn run(&mut self, mut quit_rx: mpsc::Receiver<bool>) {
+    pub async fn run(&mut self) {
         let rx = get_client_event_receiver().unwrap();
         let mut client_rx = rx.lock().await;
+        let mut quit_rx = get_quit_rx().unwrap();
 
         loop {
             tokio::select! {
@@ -108,7 +97,7 @@ impl Service {
                         let _ = self.daemon_tx.send(FFIDaemonEvent::Error(FFIError::FFIClientEventHandleError)).await;
                     }
                 },
-                rx = quit_rx.recv()  => if rx.is_some() {
+                rx = quit_rx.recv()  => if rx.is_ok() {
                     return;
                 },
             }
