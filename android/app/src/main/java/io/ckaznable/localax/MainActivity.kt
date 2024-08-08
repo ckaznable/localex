@@ -7,6 +7,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -160,8 +161,8 @@ fun InComingVerifyDialog(title: String, desc: String, onOk: () -> Unit, onCancel
             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
         ) {
             Column(
-                modifier = Modifier.padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                modifier = Modifier.padding(16.dp)
+                    .fillMaxWidth(),
             ) {
                 Text(
                     text = title,
@@ -173,7 +174,10 @@ fun InComingVerifyDialog(title: String, desc: String, onOk: () -> Unit, onCancel
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                Row {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
                     Button(onClick = onOk, modifier = Modifier.padding(PaddingValues(0.dp, 0.dp, 8.dp, 0.dp))) {
                         Text("OK")
                     }
