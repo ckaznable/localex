@@ -24,7 +24,7 @@ pub struct IPCServer {
     rx: mpsc::Receiver<IPCMsgPack<RequestFromClient>>,
     ctrlc_rx: broadcast::Receiver<()>,
     id_map: HashMap<String, Arc<OwnedWriteHalf>>,
-    listen_handle: Option<JoinHandle<Result<()>>>,
+    listen_handle: Option<JoinHandle<()>>,
     sock: PathBuf,
 }
 
@@ -121,12 +121,12 @@ pub struct IPCClient {
     ctrlc_rx: broadcast::Receiver<()>,
     stream_read: Option<Arc<OwnedReadHalf>>,
     stream_write: Arc<OwnedWriteHalf>,
-    stream_handle: Option<JoinHandle<Result<()>>>,
+    stream_handle: Option<JoinHandle<()>>,
     id: String,
 }
 
 impl IPCClient {
-    pub async fn new(sock_path: Option<PathBuf>, ctrlc_rx: broadcast::Receiver<()>,) -> Result<Self> {
+    pub async fn new(sock_path: Option<PathBuf>, ctrlc_rx: broadcast::Receiver<()>) -> Result<Self> {
         let sock_path = sock_path.unwrap_or_else(|| sock::get_sock_mount_path().into());
         if sock_path.exists() {
             let (tx, rx) = Self::get_ipc_channel();

@@ -89,7 +89,7 @@ where
         &self,
         read: Arc<OwnedReadHalf>,
         write: Arc<OwnedWriteHalf>,
-    ) -> Result<JoinHandle<Result<()>>> {
+    ) -> Result<JoinHandle<()>> {
         let tx = self.ipc_tx();
         let mut crx = self.ctrlc_rx();
 
@@ -104,36 +104,36 @@ where
                     }
                 }
             }
-            Ok(())
         });
 
         Ok(handle)
     }
 
-    async fn listen(&self, sock_path: PathBuf) -> Result<JoinHandle<Result<()>>> {
+    async fn listen(&self, sock_path: PathBuf) -> Result<JoinHandle<()>> {
         let tx = self.ipc_tx();
         let crx = self.ctrlc_rx();
+        let listener = UnixListener::bind(sock_path)?;
 
         let handle = tokio::spawn(async move {
-            let listener = UnixListener::bind(sock_path)?;
             let mut ctrlc_rx_out = crx.resubscribe();
             let ctrlc_rx_inner = crx.resubscribe();
 
             loop {
                 tokio::select! {
                     _ = ctrlc_rx_out.recv() => break,
-                    r = listener.accept() => if let Ok((stream, _)) = r {
-                        let crx = ctrlc_rx_inner.resubscribe();
-                        let tx = tx.clone();
-                        info!("new accept stream incoming");
-                        tokio::spawn(async move {
-                            Self::handle_accept_connection(stream, tx, crx).await;
-                        });
+                    r = listener.accept() => match r {
+                        Ok((stream, _)) => {
+                            let crx = ctrlc_rx_inner.resubscribe();
+                            let tx = tx.clone();
+                            info!("accept new connection");
+                            tokio::spawn(async move {
+                                Self::handle_accept_connection(stream, tx, crx).await;
+                            });
+                        }
+                        Err(e) => error!("{e:?}")
                     }
                 }
             }
-
-            Ok(())
         });
 
         Ok(handle)
@@ -222,7 +222,7 @@ where
         self.read.readable().await?;
 
         match self.read.try_read_buf(&mut self.read_buf) {
-            Ok(0) => {},
+            Ok(0) => return Err(anyhow!("connection closed")),
             Ok(n) => {
                 info!("read {} bytes from stream", n);
                 self.read_chunk(n).await?;

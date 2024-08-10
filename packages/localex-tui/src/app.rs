@@ -1,6 +1,10 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
+use common::{
+    event::{ClientEvent, DaemonEvent},
+    peer::PeerVerifyState,
+};
 use crossterm::{
     self, cursor,
     event::{DisableMouseCapture, Event, KeyCode, KeyEvent, KeyModifiers},
@@ -10,16 +14,12 @@ use crossterm::{
 use futures::{FutureExt, StreamExt};
 use libp2p::PeerId;
 use localex_ipc::IPCClient;
-use common::{
-    event::{ClientEvent, DaemonEvent},
-    peer::PeerVerifyState,
-};
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Layout, Rect},
-    style::{Modifier, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, List, ListItem, ListState, Paragraph},
+    widgets::{Block, List, ListItem, ListState, Padding, Paragraph},
     Frame, Terminal,
 };
 use tokio::sync::broadcast;
@@ -133,7 +133,10 @@ impl App {
             }
             PeerList(peers) => {
                 if peers.len() > self.state.peers.len() {
-                    info!("received {} new peers", peers.len() - self.state.peers.len());
+                    info!(
+                        "received {} new peers",
+                        peers.len() - self.state.peers.len()
+                    );
                 }
 
                 self.state.peers = peers.into_iter().map(Peer).collect();
@@ -192,6 +195,11 @@ impl App {
 
                 self.state.ui_state = AppUIState::List;
             }
+            Char('r') | Char('R') => {
+                self.client
+                    .send(ClientEvent::RequestPeerList)
+                    .await;
+            }
             _ => {}
         }
     }
@@ -200,31 +208,43 @@ impl App {
         let area = f.size();
         let items: Vec<ListItem> = state.peers.iter().map(ListItem::from).collect();
 
-        let [name_area, list_area] =
-            Layout::vertical([Constraint::Length(3), Constraint::Min(0)]).areas(area);
+        let [name_area, id_area, list_area, bottom_area] = Layout::vertical([
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Min(0),
+            Constraint::Length(1),
+        ])
+        .areas(area);
+
+        let name = Paragraph::new(vec![Line::from(Span::raw(&state.hostname))])
+            .block(Block::bordered().title("Name"));
+        f.render_widget(name, name_area);
 
         let peer_id = state
             .local_peer
             .map(|p| p.to_string())
-            .unwrap_or_else(|| "".into());
-        let name = Paragraph::new(vec![Line::from(vec![
-            Span::raw(&state.hostname),
-            Span::raw(":"),
-            Span::raw(peer_id),
-        ])]);
-        f.render_widget(name.block(Block::bordered()), name_area);
+            .unwrap_or_else(|| "unknown".into());
+        let id = Paragraph::new(vec![Line::from(Span::raw(&peer_id))])
+            .block(Block::bordered().title("ID"));
+        f.render_widget(id, id_area);
 
         let list = List::new(items)
             .block(
                 Block::bordered()
-                    .title("Peers List")
+                    .title("Remote Device List")
                     .title_alignment(Alignment::Left),
             )
             .highlight_style(Style::new().add_modifier(Modifier::REVERSED))
             .highlight_symbol(">")
             .repeat_highlight_symbol(true);
-
         f.render_stateful_widget(list, list_area, &mut state.list_state);
+
+        let bottom = Paragraph::new(vec![Line::from(vec![
+            Span::styled("R", Style::default().fg(Color::Red)),
+            Span::raw("efresh"),
+        ])])
+            .block(Block::default().padding(Padding::horizontal(2)));
+        f.render_widget(bottom, bottom_area);
 
         if let AppUIState::InCommingVerify(peer) = &state.ui_state {
             let carea = Self::centered_rect(100, 5, area);
