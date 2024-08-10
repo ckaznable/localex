@@ -4,6 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-libp2p = { git = "https://github.com/libp2p/rust-libp2p.git", rev = "1617abb3bfcf3e8663568e90a8fc4009aef04ba9", features = ["serde"] }
+libp2p = { version = "0.54.0", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"]}
 serde_repr = "0.1.19"

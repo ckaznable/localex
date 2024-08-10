@@ -5,6 +5,6 @@ edition = "2021"
 
 [dependencies]
 common = { path = "../common/"}
-libp2p = { git = "https://github.com/libp2p/rust-libp2p.git", rev = "1617abb3bfcf3e8663568e90a8fc4009aef04ba9", features = ["tcp", "tokio", "noise", "yamux", "macros", "gossipsub", "mdns", "request-response", "cbor", "quic", "tls"] }
+libp2p = { version = "0.54.0", features = ["tcp", "tokio", "noise", "yamux", "macros", "gossipsub", "mdns", "request-response", "cbor", "quic", "tls"] }
 tokio = { version = "1", features = ["full"] }
 anyhow = "1.0.86"
