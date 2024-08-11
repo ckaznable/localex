@@ -19,7 +19,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, List, ListItem, ListState, Padding, Paragraph},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
     Frame, Terminal,
 };
 use tokio::sync::broadcast;
@@ -228,22 +228,40 @@ impl App {
             .block(Block::bordered().title("ID"));
         f.render_widget(id, id_area);
 
+        let [_, list_body, _] = Layout::vertical([
+            Constraint::Length(1),
+            Constraint::Min(0),
+            Constraint::Length(1),
+        ])
+        .areas(list_area);
+
+
+        let [devices, info] = Layout::horizontal([
+            Constraint::Length(25),
+            Constraint::Min(0),
+        ])
+        .areas(list_body);
+
+        f.render_widget(Block::default()
+            .borders(Borders::TOP | Borders::BOTTOM)
+            .title_alignment(Alignment::Left), list_area);
+
+        if let Some(peer) = state.peers.get(state.list_state.selected().unwrap_or(0)) {
+            f.render_widget(peer, info);
+        }
+
         let list = List::new(items)
-            .block(
-                Block::bordered()
-                    .title("Remote Device List")
-                    .title_alignment(Alignment::Left),
-            )
+            .block(Block::default().borders(Borders::RIGHT))
             .highlight_style(Style::new().add_modifier(Modifier::REVERSED))
             .highlight_symbol(">")
             .repeat_highlight_symbol(true);
-        f.render_stateful_widget(list, list_area, &mut state.list_state);
+        f.render_stateful_widget(list, devices, &mut state.list_state);
 
         let bottom = Paragraph::new(vec![Line::from(vec![
             Span::styled("R", Style::default().fg(Color::Red)),
             Span::raw("efresh"),
         ])])
-            .block(Block::default().padding(Padding::horizontal(2)));
+            .block(Block::default());
         f.render_widget(bottom, bottom_area);
 
         if let AppUIState::InCommingVerify(peer) = &state.ui_state {
