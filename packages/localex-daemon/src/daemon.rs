@@ -36,7 +36,7 @@ impl Daemon {
         sock: Option<PathBuf>,
         store: Box<dyn DaemonDataStore + Send + Sync>,
     ) -> Result<Self> {
-        let (tx, rx) = broadcast::channel(10);
+        let (tx, rx) = broadcast::channel(0);
         let _ = ctrlc::set_handler(move || {
             tx.send(()).expect("close application error");
         });

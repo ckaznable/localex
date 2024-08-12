@@ -31,7 +31,7 @@ where
 
     #[allow(clippy::type_complexity)]
     fn get_ipc_channel() -> (mpsc::Sender<IPCMsgPack<I>>, mpsc::Receiver<IPCMsgPack<I>>) {
-        mpsc::channel(16)
+        mpsc::channel(8)
     }
 
     async fn recv_stream(&mut self) -> IPCMsgPack<I> {

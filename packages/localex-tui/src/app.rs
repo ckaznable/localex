@@ -53,7 +53,7 @@ pub struct App {
 
 impl App {
     pub async fn new(sock: Option<PathBuf>) -> Result<Self> {
-        let (quit_tx, rx) = broadcast::channel(10);
+        let (quit_tx, rx) = broadcast::channel(0);
         let client = IPCClient::new(sock, rx).await?;
 
         // setup terminal

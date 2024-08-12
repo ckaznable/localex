@@ -51,7 +51,7 @@ pub fn get_or_create_channel() -> Result<(ChannelSender<FFIDaemonEvent>, Channel
             .zip(RECEIVER.clone())
             .map(Ok)
             .unwrap_or_else(|| {
-                let (tx, rx) = mpsc::channel(32);
+                let (tx, rx) = mpsc::channel(8);
                 let rx = Arc::new(Mutex::new(rx));
                 SENDER = Some(tx.clone());
                 RECEIVER = Some(rx.clone());
@@ -80,7 +80,7 @@ pub fn get_or_create_client_event_channel() -> Result<(ChannelSender<FFIClientEv
             .zip(CLIENT_EVENT_RECEIVER.clone())
             .map(Ok)
             .unwrap_or_else(|| {
-                let (tx, rx) = mpsc::channel(16);
+                let (tx, rx) = mpsc::channel(8);
                 let rx = Arc::new(Mutex::new(rx));
                 CLIENT_EVENT_SENDER = Some(tx.clone());
                 CLIENT_EVENT_RECEIVER = Some(rx.clone());
@@ -92,7 +92,7 @@ pub fn get_or_create_client_event_channel() -> Result<(ChannelSender<FFIClientEv
 
 pub fn init_quit_channel() {
     unsafe {
-        let (tx, rx) = broadcast::channel(16);
+        let (tx, rx) = broadcast::channel(0);
         QUIT_SENDER = Some(tx);
         QUIT_RECEIVER = Some(rx);
     }
