@@ -9,6 +9,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.Binder
+import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -25,6 +26,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 class LocalaxService : Service() {
     private val uiScope = CoroutineScope(Dispatchers.Default + Job())
@@ -52,7 +54,11 @@ class LocalaxService : Service() {
         startForeground(NOTIFICATION_ID, createNotification())
 
         Log.d(LOG_TAG, "localax init")
-        io.ckaznable.localax.rust.init("android", null)
+        io.ckaznable.localax.rust.init(getDeviceName(), null)
+    }
+
+    private fun getDeviceName(): String {
+        return Build.MODEL
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -73,7 +79,7 @@ class LocalaxService : Service() {
                     is FfiDaemonEvent.InComingVerify -> handleInComingVerify(data.v1)
                     is FfiDaemonEvent.PeerList -> handlePeerList(data.v1)
                     is FfiDaemonEvent.VerifyResult -> handleVerifyResult(data.v1, data.v2, data.v3)
-                    is FfiDaemonEvent.Error -> Log.d(LOG_TAG, "error: " + data.v1.toString())
+                    is FfiDaemonEvent.Error -> Log.d(LOG_TAG, "error: ${data.v1}")
                     else -> Unit
                 }
             }
@@ -118,7 +124,7 @@ class LocalaxService : Service() {
     }
 
     private suspend fun handlePeerList(list: List<FfiDaemonPeer>) {
-        Log.d(LOG_TAG, "get peer list " + list.size)
+        Log.d(LOG_TAG, "get peer list ${list.size}")
         _serviceFlow.emit(LocalaxServiceEvent.UpdatePeerList(list))
     }
 
@@ -130,7 +136,7 @@ class LocalaxService : Service() {
         uiFlow.collect { event ->
             when (event) {
                 is FrontendReply.ReplyVerifyRequest -> {
-                    Log.d(LOG_TAG, "client reply verify request: " + if (event.result) "YES" else "No")
+                    Log.d(LOG_TAG, "client reply verify request: ${if (event.result) "YES" else "No"}")
                     dispatch(FfiClientEvent.VerifyConfirm(event.peerId, event.result))
                 }
                 is FrontendReply.RequestVerify -> {
