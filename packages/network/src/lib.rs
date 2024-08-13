@@ -9,7 +9,7 @@ use libp2p::{
     swarm::NetworkBehaviour,
     PeerId, StreamProtocol, Swarm, SwarmBuilder,
 };
-use common::auth::{LocalExAuthRequest, LocalExAuthResponse};
+use common::{auth::{LocalExAuthRequest, LocalExAuthResponse}, file::{LocalExFileRequest, LocalExFileResponse}};
 
 pub fn new_swarm(local_keypair: Keypair) -> Result<Swarm<LocalExBehaviour>> {
     let swarm = SwarmBuilder::with_existing_identity(local_keypair)
@@ -33,6 +33,7 @@ pub struct LocalExBehaviour {
     pub gossipsub: gossipsub::Behaviour,
     pub mdns: mdns::tokio::Behaviour,
     pub rr_auth: request_response::cbor::Behaviour<LocalExAuthRequest, LocalExAuthResponse>,
+    pub rr_file: request_response::cbor::Behaviour<LocalExFileRequest, LocalExFileResponse>,
 }
 
 impl LocalExBehaviour {
@@ -41,6 +42,7 @@ impl LocalExBehaviour {
             gossipsub: Self::create_gossipsub_behavior(key.clone()),
             mdns: Self::create_mdns_behavior(PeerId::from(key.public())),
             rr_auth: Self::create_auth_request_response(),
+            rr_file: Self::create_file_request_response(),
         }
     }
 
@@ -55,6 +57,17 @@ impl LocalExBehaviour {
             ProtocolSupport::Full,
         )];
         let cfg = request_response::Config::default().with_request_timeout(Duration::from_secs(30));
+
+        request_response::cbor::Behaviour::new(protocol, cfg)
+    }
+
+    fn create_file_request_response(
+    ) -> request_response::cbor::Behaviour<LocalExFileRequest, LocalExFileResponse> {
+        let protocol = [(
+            StreamProtocol::new("/localex/file/1.0.0"),
+            ProtocolSupport::Full,
+        )];
+        let cfg = request_response::Config::default().with_request_timeout(Duration::from_secs(600));
 
         request_response::cbor::Behaviour::new(protocol, cfg)
     }

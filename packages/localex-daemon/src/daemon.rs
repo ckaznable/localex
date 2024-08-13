@@ -13,7 +13,7 @@ use libp2p::{
 };
 use localex_ipc::IPCServer;
 use network::LocalExBehaviour;
-use protocol::{GossipTopic, LocalExProtocol};
+use protocol::{file::{FileChunk, FileReaderClient, FileTransferClientProtocol}, GossipTopic, LocalExProtocol, LocalExSwarm};
 use tokio::sync::broadcast;
 use tracing::error;
 
@@ -79,6 +79,16 @@ impl Daemon {
     }
 }
 
+impl LocalExSwarm for Daemon {
+    fn swarm(&self) -> &Swarm<LocalExBehaviour> {
+        &self.swarm
+    }
+
+    fn swarm_mut(&mut self) -> &mut Swarm<LocalExBehaviour> {
+        &mut self.swarm
+    }
+}
+
 #[async_trait]
 impl LocalExProtocol for Daemon {
     fn hostname(&self) -> String {
@@ -101,14 +111,6 @@ impl LocalExProtocol for Daemon {
         self.store.get_peers_mut()
     }
 
-    fn swarm(&self) -> &Swarm<LocalExBehaviour> {
-        &self.swarm
-    }
-
-    fn swarm_mut(&mut self) -> &mut Swarm<LocalExBehaviour> {
-        &mut self.swarm
-    }
-
     fn get_peers(&mut self) -> Vec<DaemonPeer> {
         self.store.get_peers().values().cloned().collect()
     }
@@ -124,5 +126,24 @@ impl LocalExProtocol for Daemon {
     async fn send_daemon_event(&mut self, event: DaemonEvent) -> Result<()> {
         self.server.broadcast(event).await;
         Ok(())
+    }
+}
+
+
+#[async_trait]
+impl FileReaderClient for Daemon {
+    async fn read(&mut self, chunk: FileChunk) -> anyhow::Result<()> {
+        todo!()
+    }
+
+    async fn ready(&mut self, id: String, filename: String, size: usize, chunks: usize, chunk_size: usize) -> anyhow::Result<()> {
+        todo!()
+    }
+}
+
+#[async_trait]
+impl FileTransferClientProtocol for Daemon {
+    async fn recv_file(&mut self, chunk: &[u8]) -> anyhow::Result<()> {
+        todo!()
     }
 }

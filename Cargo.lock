@@ -2965,6 +2965,7 @@ name = "protocol"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-compression",
  "async-trait",
  "common",
  "futures",
@@ -2973,6 +2974,7 @@ dependencies = [
  "serde",
  "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

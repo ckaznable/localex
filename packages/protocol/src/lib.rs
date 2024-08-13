@@ -3,10 +3,21 @@ use std::collections::{BTreeMap, HashMap};
 use anyhow::Result;
 use async_trait::async_trait;
 use common::{
-    auth::{AuthResponseState, LocalExAuthRequest, LocalExAuthResponse},
-    event::{ClientEvent, DaemonEvent},
-    peer::{DaemonPeer, PeerVerifyState},
+    auth::{
+        AuthResponseState,
+        LocalExAuthRequest,
+        LocalExAuthResponse
+    },
+    event::{
+        ClientEvent,
+        DaemonEvent
+    },
+    peer::{
+        DaemonPeer,
+        PeerVerifyState
+    }
 };
+use file::FileTransferClientProtocol;
 use libp2p::{
     gossipsub::{self, TopicHash},
     mdns,
@@ -16,22 +27,25 @@ use libp2p::{
 use network::{LocalExBehaviour, LocalExBehaviourEvent};
 use tracing::{error, info};
 
+pub mod file;
+
+pub trait LocalExSwarm {
+    fn swarm(&self) -> &Swarm<LocalExBehaviour>;
+    fn swarm_mut(&mut self) -> &mut Swarm<LocalExBehaviour>;
+}
+
 #[derive(Hash, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum GossipTopic {
     Hostname,
 }
 
-#[allow(unused_must_use)]
 #[async_trait]
-pub trait LocalExProtocol: Send {
+pub trait LocalExProtocol: Send + LocalExSwarm + FileTransferClientProtocol {
     fn hostname(&self) -> String;
     fn topics_mut(&mut self) -> &mut HashMap<GossipTopic, TopicHash>;
     fn topics(&self) -> &HashMap<GossipTopic, TopicHash>;
     fn auth_channels_mut(&mut self) -> &mut HashMap<PeerId, ResponseChannel<LocalExAuthResponse>>;
     fn peers_mut(&mut self) -> &mut BTreeMap<PeerId, DaemonPeer>;
-
-    fn swarm(&self) -> &Swarm<LocalExBehaviour>;
-    fn swarm_mut(&mut self) -> &mut Swarm<LocalExBehaviour>;
 
     fn get_peers(&mut self) -> Vec<DaemonPeer>;
     fn save_peers(&mut self) -> Result<()>;
@@ -52,7 +66,7 @@ pub trait LocalExProtocol: Send {
 
     async fn send_peers(&mut self) {
         let list = self.get_peers();
-        self.send_daemon_event(DaemonEvent::PeerList(list)).await;
+        let _ = self.send_daemon_event(DaemonEvent::PeerList(list)).await;
     }
 
     fn remove_peer(&mut self, peer_id: &PeerId) {
@@ -97,6 +111,7 @@ pub trait LocalExProtocol: Send {
             LocalExBehaviourEvent::RrAuth(event) => self.handle_auth(event).await,
             LocalExBehaviourEvent::Gossipsub(event) => self.handle_gossipsub(event).await,
             LocalExBehaviourEvent::Mdns(event) => self.handle_mdns(event).await,
+            LocalExBehaviourEvent::RrFile(event) => self.handle_file(event).await,
         }
     }
 
@@ -136,7 +151,7 @@ pub trait LocalExProtocol: Send {
             }
             RequestLocalInfo => {
                 info!("client request local info");
-                self.send_daemon_event(DaemonEvent::LocalInfo(
+                let _ = self.send_daemon_event(DaemonEvent::LocalInfo(
                     self.hostname(),
                     *self.swarm().local_peer_id(),
                 ))
@@ -215,10 +230,10 @@ pub trait LocalExProtocol: Send {
         use request_response::Event::*;
         match event {
             InboundFailure { error, .. } => {
-                error!("inbound failure: {error}");
+                error!("rr_auth inbound failure: {error}");
             }
             OutboundFailure { error, .. } => {
-                error!("outbound failure: {error}");
+                error!("rr_auth outbound failure: {error}");
             }
             Message {
                 peer,
@@ -240,7 +255,7 @@ pub trait LocalExProtocol: Send {
                     peer.clone()
                 };
 
-                self.send_daemon_event(DaemonEvent::InComingVerify(peer)).await;
+                let _ = self.send_daemon_event(DaemonEvent::InComingVerify(peer)).await;
                 self.send_peers().await;
             }
             Message {
@@ -266,7 +281,7 @@ pub trait LocalExProtocol: Send {
                     .map(|p| p.set_hostname(response.hostname));
                 let _ = self.save_peers();
 
-                self.send_daemon_event(DaemonEvent::VerifyResult(peer, result)).await;
+                let _ = self.send_daemon_event(DaemonEvent::VerifyResult(peer, result)).await;
                 self.send_peers().await;
             }
             _ => {}

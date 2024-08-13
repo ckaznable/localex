@@ -11,7 +11,7 @@ use libp2p::{
     PeerId, Swarm,
 };
 use network::{new_swarm, LocalExBehaviour, LocalExBehaviourEvent};
-use protocol::{GossipTopic, LocalExProtocol};
+use protocol::{file::{FileChunk, FileReaderClient, FileTransferClientProtocol}, GossipTopic, LocalExProtocol, LocalExSwarm};
 use tokio::sync::{mpsc, Mutex};
 
 use crate::{error::FFIError, ffi::FFIDaemonEvent, get_client_event_receiver, get_quit_rx};
@@ -89,6 +89,7 @@ impl Service {
                             LocalExBehaviourEvent::RrAuth(event) => self.handle_auth(event).await,
                             LocalExBehaviourEvent::Gossipsub(event) => self.handle_gossipsub(event).await,
                             LocalExBehaviourEvent::Mdns(event) => self.handle_mdns(event).await,
+                            LocalExBehaviourEvent::RrFile(event) => self.handle_file(event).await,
                         };
                     }
                 } => {},
@@ -102,6 +103,16 @@ impl Service {
                 },
             }
         }
+    }
+}
+
+impl LocalExSwarm for Service {
+    fn swarm(&self) -> &Swarm<LocalExBehaviour> {
+        &self.swarm
+    }
+
+    fn swarm_mut(&mut self) -> &mut Swarm<LocalExBehaviour> {
+        &mut self.swarm
     }
 }
 
@@ -127,14 +138,6 @@ impl LocalExProtocol for Service {
         &mut self.peers
     }
 
-    fn swarm(&self) -> &Swarm<LocalExBehaviour> {
-        &self.swarm
-    }
-
-    fn swarm_mut(&mut self) -> &mut Swarm<LocalExBehaviour> {
-        &mut self.swarm
-    }
-
     fn get_peers(&mut self) -> Vec<DaemonPeer> {
         self.peers.values().cloned().collect()
     }
@@ -153,5 +156,23 @@ impl LocalExProtocol for Service {
             .send(event.into())
             .await
             .map_err(anyhow::Error::from)
+    }
+}
+
+#[async_trait]
+impl FileReaderClient for Service {
+    async fn read(&mut self, chunk: FileChunk) -> anyhow::Result<()> {
+        todo!()
+    }
+
+    async fn ready(&mut self, id: String, filename: String, size: usize, chunks: usize, chunk_size: usize) -> anyhow::Result<()> {
+        todo!()
+    }
+}
+
+#[async_trait]
+impl FileTransferClientProtocol for Service {
+    async fn recv_file(&mut self, chunk: &[u8]) -> anyhow::Result<()> {
+        todo!()
     }
 }
