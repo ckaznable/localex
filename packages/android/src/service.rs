@@ -11,7 +11,7 @@ use libp2p::{
     PeerId, Swarm,
 };
 use network::{new_swarm, LocalExBehaviour, LocalExBehaviourEvent};
-use protocol::{file::{FileChunk, FileReaderClient, FileTransferClientProtocol}, GossipTopic, LocalExProtocol, LocalExSwarm};
+use protocol::{file::{FileChunk, FileReaderClient, FileTransferClientProtocol}, AbortListener, GossipTopic, LocalExProtocol, LocalExSwarm};
 use tokio::sync::{mpsc, Mutex};
 
 use crate::{error::FFIError, ffi::FFIDaemonEvent, get_client_event_receiver, get_quit_rx};
@@ -161,18 +161,28 @@ impl LocalExProtocol for Service {
 
 #[async_trait]
 impl FileReaderClient for Service {
-    async fn read(&mut self, chunk: FileChunk) -> anyhow::Result<()> {
+    async fn read(&mut self, session: &str, chunk: FileChunk) -> anyhow::Result<()> {
         todo!()
     }
 
-    async fn ready(&mut self, id: String, filename: String, size: usize, chunks: usize, chunk_size: usize) -> anyhow::Result<()> {
+    async fn ready(&mut self, session: &str, id: &str, filename: &str, size: usize, chunks: usize, chunk_size: usize) -> anyhow::Result<()> {
         todo!()
+    }
+
+    async fn done(&mut self, session: &str) {
+        todo!()
+    }
+}
+
+impl AbortListener for Service {
+    fn abort_rx(&self) -> tokio::sync::broadcast::Receiver<()> {
+        get_quit_rx().unwrap()
     }
 }
 
 #[async_trait]
 impl FileTransferClientProtocol for Service {
-    async fn recv_file(&mut self, chunk: &[u8]) -> anyhow::Result<()> {
+    fn get_file_path_with_id(&self, id: &str) -> std::path::PathBuf {
         todo!()
     }
 }

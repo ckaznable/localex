@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum FileRequestPayload {
+    Done,
     Chunk {
         id: String,
         data: Vec<u8>,
@@ -30,15 +31,16 @@ pub enum ChunkResult {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum FileResponsePayload {
-    Done,
-    Ready,
+    Ready {
+        id: String,
+    },
     RequestChunk {
+        id: String,
         offset: usize,
         end: usize,
     },
     RequestFile {
         id: String,
-        filename: String,
     },
     Checked {
         id: String,

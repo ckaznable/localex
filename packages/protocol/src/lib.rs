@@ -25,6 +25,7 @@ use libp2p::{
     PeerId, Swarm,
 };
 use network::{LocalExBehaviour, LocalExBehaviourEvent};
+use tokio::sync::broadcast;
 use tracing::{error, info};
 
 pub mod file;
@@ -32,6 +33,10 @@ pub mod file;
 pub trait LocalExSwarm {
     fn swarm(&self) -> &Swarm<LocalExBehaviour>;
     fn swarm_mut(&mut self) -> &mut Swarm<LocalExBehaviour>;
+}
+
+pub trait AbortListener {
+    fn abort_rx(&self) -> broadcast::Receiver<()>;
 }
 
 #[derive(Hash, Clone, Copy, PartialEq, Eq, Debug)]

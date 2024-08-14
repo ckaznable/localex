@@ -13,7 +13,7 @@ use libp2p::{
 };
 use localex_ipc::IPCServer;
 use network::LocalExBehaviour;
-use protocol::{file::{FileChunk, FileReaderClient, FileTransferClientProtocol}, GossipTopic, LocalExProtocol, LocalExSwarm};
+use protocol::{file::{FileChunk, FileReaderClient, FileTransferClientProtocol}, AbortListener, GossipTopic, LocalExProtocol, LocalExSwarm};
 use tokio::sync::broadcast;
 use tracing::error;
 
@@ -132,18 +132,28 @@ impl LocalExProtocol for Daemon {
 
 #[async_trait]
 impl FileReaderClient for Daemon {
-    async fn read(&mut self, chunk: FileChunk) -> anyhow::Result<()> {
+    async fn read(&mut self, session: &str, chunk: FileChunk) -> anyhow::Result<()> {
         todo!()
     }
 
-    async fn ready(&mut self, id: String, filename: String, size: usize, chunks: usize, chunk_size: usize) -> anyhow::Result<()> {
+    async fn ready(&mut self, session: &str, id: &str, filename: &str, size: usize, chunks: usize, chunk_size: usize) -> anyhow::Result<()> {
         todo!()
+    }
+
+    async fn done(&mut self, session: &str) {
+        todo!()
+    }
+}
+
+impl AbortListener for Daemon {
+    fn abort_rx(&self) -> broadcast::Receiver<()> {
+        self.ctrlc_rx.resubscribe()
     }
 }
 
 #[async_trait]
 impl FileTransferClientProtocol for Daemon {
-    async fn recv_file(&mut self, chunk: &[u8]) -> anyhow::Result<()> {
+    fn get_file_path_with_id(&self, id: &str) -> PathBuf {
         todo!()
     }
 }
