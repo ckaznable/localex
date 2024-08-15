@@ -1,6 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
-    sync::Arc,
+    collections::{BTreeMap, HashMap}, sync::Arc
 };
 
 use async_trait::async_trait;
@@ -10,8 +9,8 @@ use libp2p::{
     gossipsub::TopicHash, identity::Keypair, request_response::ResponseChannel, swarm::SwarmEvent,
     PeerId, Swarm,
 };
-use network::{new_swarm, LocalExBehaviour, LocalExBehaviourEvent};
-use protocol::{file::{FileChunk, FileReaderClient, FileTransferClientProtocol}, AbortListener, GossipTopic, LocalExProtocol, LocalExSwarm};
+use network::{new_swarm, LocalExBehaviour};
+use protocol::{file::{FileChunk, FileReaderClient, FileTransferClientProtocol, FilesRegisterCenter, FilesRegisterItem}, AbortListener, GossipTopic, LocalExProtocol, LocalExSwarm};
 use tokio::sync::{mpsc, Mutex};
 
 use crate::{error::FFIError, ffi::FFIDaemonEvent, get_client_event_receiver, get_quit_rx};
@@ -58,6 +57,7 @@ pub struct Service {
     hostname: String,
     peers: BTreeMap<PeerId, DaemonPeer>,
     daemon_tx: mpsc::Sender<FFIDaemonEvent>,
+    files_register_store: HashMap<String, FilesRegisterItem>,
 }
 
 impl Service {
@@ -73,6 +73,7 @@ impl Service {
             auth_channels: HashMap::new(),
             topics: HashMap::new(),
             peers: BTreeMap::new(),
+            files_register_store: HashMap::new(),
         })
     }
 
@@ -85,12 +86,7 @@ impl Service {
             tokio::select! {
                 _ = async {
                     if let SwarmEvent::Behaviour(event) = self.swarm.select_next_some().await {
-                        let _ = match event {
-                            LocalExBehaviourEvent::RrAuth(event) => self.handle_auth(event).await,
-                            LocalExBehaviourEvent::Gossipsub(event) => self.handle_gossipsub(event).await,
-                            LocalExBehaviourEvent::Mdns(event) => self.handle_mdns(event).await,
-                            LocalExBehaviourEvent::RrFile(event) => self.handle_file(event).await,
-                        };
+                        let _ = self.handle_event(event).await;
                     }
                 } => {},
                 event = client_rx.recv() => if let Some(event) = event {
@@ -180,9 +176,15 @@ impl AbortListener for Service {
     }
 }
 
-#[async_trait]
-impl FileTransferClientProtocol for Service {
-    fn get_file_path_with_id(&self, id: &str) -> std::path::PathBuf {
-        todo!()
+impl FilesRegisterCenter for Service {
+    fn store(&self) -> &HashMap<String, protocol::file::FilesRegisterItem> {
+        &self.files_register_store
+    }
+
+    fn store_mut(&mut self) -> &mut HashMap<String, protocol::file::FilesRegisterItem> {
+        &mut self.files_register_store
     }
 }
+
+#[async_trait]
+impl FileTransferClientProtocol for Service { }

@@ -116,7 +116,7 @@ pub trait LocalExProtocol: Send + LocalExSwarm + FileTransferClientProtocol {
             LocalExBehaviourEvent::RrAuth(event) => self.handle_auth(event).await,
             LocalExBehaviourEvent::Gossipsub(event) => self.handle_gossipsub(event).await,
             LocalExBehaviourEvent::Mdns(event) => self.handle_mdns(event).await,
-            LocalExBehaviourEvent::RrFile(event) => self.handle_file(event).await,
+            LocalExBehaviourEvent::RrFile(event) => self.handle_file_event(event).await,
         }
     }
 

@@ -13,7 +13,13 @@ use libp2p::{
 };
 use localex_ipc::IPCServer;
 use network::LocalExBehaviour;
-use protocol::{file::{FileChunk, FileReaderClient, FileTransferClientProtocol}, AbortListener, GossipTopic, LocalExProtocol, LocalExSwarm};
+use protocol::{
+    file::{
+        FileChunk, FileReaderClient, FileTransferClientProtocol, FilesRegisterCenter,
+        FilesRegisterItem,
+    },
+    AbortListener, GossipTopic, LocalExProtocol, LocalExSwarm,
+};
 use tokio::sync::broadcast;
 use tracing::error;
 
@@ -27,6 +33,7 @@ pub struct Daemon {
     hostname: String,
     ctrlc_rx: broadcast::Receiver<()>,
     store: Box<dyn DaemonDataStore + Send + Sync>,
+    files_register_store: HashMap<String, FilesRegisterItem>,
 }
 
 impl Daemon {
@@ -51,6 +58,7 @@ impl Daemon {
             store,
             topics: HashMap::new(),
             auth_channels: HashMap::new(),
+            files_register_store: HashMap::new(),
             ctrlc_rx: rx,
         })
     }
@@ -119,9 +127,9 @@ impl LocalExProtocol for Daemon {
         self.store.save_peers()
     }
 
-    fn on_remove_peer(&mut self, _: &PeerId) { }
+    fn on_remove_peer(&mut self, _: &PeerId) {}
 
-    fn on_add_peer(&mut self, _: PeerId) { }
+    fn on_add_peer(&mut self, _: PeerId) {}
 
     async fn send_daemon_event(&mut self, event: DaemonEvent) -> Result<()> {
         self.server.broadcast(event).await;
@@ -129,14 +137,21 @@ impl LocalExProtocol for Daemon {
     }
 }
 
-
 #[async_trait]
 impl FileReaderClient for Daemon {
-    async fn read(&mut self, session: &str, chunk: FileChunk) -> anyhow::Result<()> {
+    async fn read(&mut self, session: &str, chunk: FileChunk) -> Result<()> {
         todo!()
     }
 
-    async fn ready(&mut self, session: &str, id: &str, filename: &str, size: usize, chunks: usize, chunk_size: usize) -> anyhow::Result<()> {
+    async fn ready(
+        &mut self,
+        session: &str,
+        id: &str,
+        filename: &str,
+        size: usize,
+        chunks: usize,
+        chunk_size: usize,
+    ) -> Result<()> {
         todo!()
     }
 
@@ -151,9 +166,15 @@ impl AbortListener for Daemon {
     }
 }
 
-#[async_trait]
-impl FileTransferClientProtocol for Daemon {
-    fn get_file_path_with_id(&self, id: &str) -> PathBuf {
-        todo!()
+impl FilesRegisterCenter for Daemon {
+    fn store(&self) -> &HashMap<String, FilesRegisterItem> {
+        &self.files_register_store
+    }
+
+    fn store_mut(&mut self) -> &mut HashMap<String, FilesRegisterItem> {
+        &mut self.files_register_store
     }
 }
+
+#[async_trait]
+impl FileTransferClientProtocol for Daemon {}

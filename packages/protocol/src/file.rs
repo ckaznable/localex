@@ -1,7 +1,7 @@
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 
 use anyhow::{anyhow, Result};
-use async_compression::tokio::write::ZstdEncoder;
+use async_compression::tokio::write::{ZstdDecoder, ZstdEncoder};
 use async_trait::async_trait;
 use common::file::{
     ChunkResult, FileRequestPayload, FileResponsePayload, LocalExFileRequest, LocalExFileResponse,
@@ -54,10 +54,9 @@ impl FileSender {
             match abort_rx.try_recv() {
                 Ok(()) => break,
                 Err(e) => {
-                    if let TryRecvError::Empty = e {
-                    } else {
+                    let TryRecvError::Empty = e else {
                         break;
-                    }
+                    };
                 }
             }
 
@@ -87,6 +86,13 @@ impl FileSender {
         encoder.shutdown().await?;
         Ok(encoder.into_inner())
     }
+
+    async fn decompress_chunk(chunk: &[u8]) -> Result<Vec<u8>> {
+        let mut decoder = ZstdDecoder::new(Vec::new());
+        decoder.write_all(chunk).await?;
+        decoder.shutdown().await?;
+        Ok(decoder.into_inner())
+    }
 }
 
 #[async_trait]
@@ -104,10 +110,17 @@ pub trait FileReaderClient {
     ) -> Result<()>;
 }
 
-#[async_trait]
-pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortListener {
-    fn get_file_path_with_id(&self, id: &str) -> PathBuf;
+pub struct FilesRegisterItem {
+    path: PathBuf,
+}
 
+pub trait FilesRegisterCenter {
+    fn store(&self) -> &HashMap<String, FilesRegisterItem>;
+    fn store_mut(&mut self) -> &mut HashMap<String, FilesRegisterItem>;
+}
+
+#[async_trait]
+pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortListener + FilesRegisterCenter {
     fn send_file_rr_response(
         &mut self,
         session: String,
@@ -139,7 +152,7 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
             .send_request(peer, LocalExFileRequest { session, payload });
     }
 
-    async fn handle_file(
+    async fn handle_file_event(
         &mut self,
         event: request_response::Event<LocalExFileRequest, LocalExFileResponse>,
     ) -> Result<()> {
@@ -191,10 +204,9 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
             match abort_rx.try_recv() {
                 Ok(()) => break,
                 Err(e) => {
-                    if let TryRecvError::Empty = e {
-                    } else {
+                    let TryRecvError::Empty = e else {
                         break;
-                    }
+                    };
                 }
             }
 
@@ -237,6 +249,7 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
                 data: chunk,
                 offset,
             } => {
+                let chunk = FileSender::decompress_chunk(&chunk).await?;
                 let chunk = FileChunk { chunk, offset };
                 let result = match self.read(&session, chunk).await {
                     Ok(_) => ChunkResult::Success,
@@ -275,8 +288,9 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
         use FileResponsePayload::*;
         match payload {
             Ready { id } | RequestFile { id } => {
-                let file_path = self.get_file_path_with_id(&id);
-                self.send_file(session, id, &peer, file_path).await?;
+                if let Some(item) = self.store().get(&id) {
+                    self.send_file(session, id, &peer, item.path.clone()).await?;
+                }
             }
             RequestChunk { .. } => {
                 todo!()
