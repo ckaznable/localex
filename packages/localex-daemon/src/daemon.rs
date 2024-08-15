@@ -5,10 +5,10 @@ use std::{
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use common::{auth::LocalExAuthResponse, event::DaemonEvent, peer::DaemonPeer, BitVec};
+use common::{auth::LocalExAuthResponse, event::DaemonEvent, peer::DaemonPeer};
 use futures::StreamExt;
 use libp2p::{
-    bytes::BytesMut, gossipsub::TopicHash, identity::Keypair, request_response::ResponseChannel, swarm::SwarmEvent, PeerId, Swarm
+    gossipsub::TopicHash, identity::Keypair, request_response::ResponseChannel, swarm::SwarmEvent, PeerId, Swarm
 };
 use localex_ipc::IPCServer;
 use network::LocalExBehaviour;
