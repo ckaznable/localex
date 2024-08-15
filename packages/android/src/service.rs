@@ -157,17 +157,18 @@ impl LocalExProtocol for Service {
 
 #[async_trait]
 impl FileReaderClient for Service {
-    async fn read(&mut self, session: &str, chunk: FileChunk) -> anyhow::Result<()> {
+    async fn read(&mut self, session: &str, id: &str, chunk: FileChunk) -> anyhow::Result<()> {
         todo!()
     }
 
-    async fn ready(&mut self, session: &str, id: &str, filename: &str, size: usize, chunks: usize, chunk_size: usize) -> anyhow::Result<()> {
+    async fn ready(&mut self, session: &str, id: &str, size: usize, chunks: usize, chunk_size: usize) -> anyhow::Result<()> {
         todo!()
     }
 
-    async fn done(&mut self, session: &str) {
+    async fn done(&mut self, session: &str, id: &str) -> Option<Vec<(usize, usize)>> {
         todo!()
     }
+
 }
 
 impl AbortListener for Service {

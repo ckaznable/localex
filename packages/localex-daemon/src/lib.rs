@@ -9,6 +9,7 @@ pub mod config;
 
 mod daemon;
 mod store;
+mod reader;
 
 pub async fn main(param: config::Config) -> Result<()> {
     logger::init_logger(logger::LoggerConfig {

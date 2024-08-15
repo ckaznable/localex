@@ -97,13 +97,12 @@ impl FileSender {
 
 #[async_trait]
 pub trait FileReaderClient {
-    async fn done(&mut self, session: &str);
-    async fn read(&mut self, session: &str, chunk: FileChunk) -> Result<()>;
+    async fn done(&mut self, session: &str, id: &str) -> Option<Vec<(usize, usize)>>;
+    async fn read(&mut self, session: &str, id: &str, chunk: FileChunk) -> Result<()>;
     async fn ready(
         &mut self,
         session: &str,
         id: &str,
-        filename: &str,
         size: usize,
         chunks: usize,
         chunk_size: usize,
@@ -213,7 +212,7 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
             self.send_chunk(session.clone(), id.clone(), peer, CHUNK_SIZE * index, data);
         }
 
-        self.send_file_rr_request(peer, session, FileRequestPayload::Done);
+        self.send_file_rr_request(peer, session, FileRequestPayload::Done { id });
         Ok(())
     }
 
@@ -241,8 +240,10 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
 
         use FileRequestPayload::*;
         match payload {
-            Done => {
-                self.done(&session).await;
+            Done { id } => {
+                if let Some(fail_ranges) = self.done(&session, &id).await {
+                    todo!()
+                }
             }
             Chunk {
                 id,
@@ -251,7 +252,7 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
             } => {
                 let chunk = FileSender::decompress_chunk(&chunk).await?;
                 let chunk = FileChunk { chunk, offset };
-                let result = match self.read(&session, chunk).await {
+                let result = match self.read(&session, &id, chunk).await {
                     Ok(_) => ChunkResult::Success,
                     Err(_) => ChunkResult::Fail,
                 };
@@ -264,13 +265,11 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
             }
             Ready {
                 id,
-                filename,
                 size,
                 chunks,
                 chunk_size,
             } => {
-                self.ready(&session, &id, &filename, size, chunks, chunk_size)
-                    .await?;
+                self.ready(&session, &id, size, chunks, chunk_size).await?;
                 self.send_file_rr_response(session, channel, FileResponsePayload::Ready { id })?;
             }
         };

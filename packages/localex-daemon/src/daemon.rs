@@ -3,13 +3,12 @@ use std::{
     path::PathBuf,
 };
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use common::{auth::LocalExAuthResponse, event::DaemonEvent, peer::DaemonPeer};
+use common::{auth::LocalExAuthResponse, event::DaemonEvent, peer::DaemonPeer, BitVec};
 use futures::StreamExt;
 use libp2p::{
-    gossipsub::TopicHash, identity::Keypair, request_response::ResponseChannel, swarm::SwarmEvent,
-    PeerId, Swarm,
+    bytes::BytesMut, gossipsub::TopicHash, identity::Keypair, request_response::ResponseChannel, swarm::SwarmEvent, PeerId, Swarm
 };
 use localex_ipc::IPCServer;
 use network::LocalExBehaviour;
@@ -23,7 +22,7 @@ use protocol::{
 use tokio::sync::broadcast;
 use tracing::error;
 
-use crate::store::DaemonDataStore;
+use crate::{reader::FileReaderManager, store::DaemonDataStore};
 
 pub struct Daemon {
     swarm: Swarm<LocalExBehaviour>,
@@ -34,6 +33,7 @@ pub struct Daemon {
     ctrlc_rx: broadcast::Receiver<()>,
     store: Box<dyn DaemonDataStore + Send + Sync>,
     files_register_store: HashMap<String, FilesRegisterItem>,
+    file_reader_manager: FileReaderManager,
 }
 
 impl Daemon {
@@ -60,6 +60,7 @@ impl Daemon {
             auth_channels: HashMap::new(),
             files_register_store: HashMap::new(),
             ctrlc_rx: rx,
+            file_reader_manager: FileReaderManager::default(),
         })
     }
 
@@ -139,24 +140,37 @@ impl LocalExProtocol for Daemon {
 
 #[async_trait]
 impl FileReaderClient for Daemon {
-    async fn read(&mut self, session: &str, chunk: FileChunk) -> Result<()> {
-        todo!()
+    async fn read(&mut self, session: &str, id: &str, chunk: FileChunk) -> Result<()> {
+        let reader = self
+            .file_reader_manager
+            .get_reader(session, id)
+            .await
+            .ok_or_else(|| anyhow!("session and id not found"))?;
+
+        let mut reader = reader.write().await;
+        reader.read(&chunk.chunk, chunk.offset)
     }
 
     async fn ready(
         &mut self,
         session: &str,
         id: &str,
-        filename: &str,
         size: usize,
-        chunks: usize,
+        _chunks: usize,
         chunk_size: usize,
     ) -> Result<()> {
-        todo!()
+        self.file_reader_manager.add(session.to_string(), id.to_string(), size, chunk_size).await;
+        Ok(())
     }
 
-    async fn done(&mut self, session: &str) {
-        todo!()
+    async fn done(&mut self, session: &str, id: &str) -> Option<Vec<(usize, usize)>> {
+        let reader = self
+            .file_reader_manager
+            .get_reader(session, id)
+            .await?;
+
+        let reader = reader.read().await;
+        reader.done()
     }
 }
 
