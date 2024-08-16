@@ -1,72 +1,86 @@
 use anyhow::{anyhow, Result};
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, io::SeekFrom, path::PathBuf, sync::Arc};
 
 use common::BitVec;
-use libp2p::bytes::BytesMut;
-use tokio::sync::RwLock;
+use tokio::{fs::File, io::{AsyncSeekExt, AsyncWriteExt}, sync::RwLock};
 
 #[derive(Default)]
-pub struct FileReaderManager {
-    map: HashMap<String, HashMap<String, Arc<RwLock<FileReader>>>>,
+pub struct FileHandleManager {
+    map: HashMap<String, HashMap<String, Arc<RwLock<FileHandler>>>>,
 }
 
-impl FileReaderManager {
-    pub async fn add(&mut self, session: String, id: String, size: usize, chunk_size: usize) {
+impl FileHandleManager {
+    pub async fn add(&mut self, session: String, id: String, size: usize, chunk_size: usize) -> Result<()> {
         match self.map.get_mut(&session) {
             None => {
                 self.map.insert(session, HashMap::new());
             }
             Some(ids) => {
-                ids.entry(id)
-                    .or_insert_with(|| Arc::new(RwLock::new(FileReader::new(size, chunk_size))));
+                if ids.contains_key(&id) {
+                    return Err(anyhow!("id exists"));
+                }
+
+                let handler = FileHandler::new(size, chunk_size).await?;
+                ids.insert(id, Arc::new(RwLock::new(handler)));
             }
         }
-    }
-
-    pub async fn get_reader(&self, session: &str, id: &str) -> Option<Arc<RwLock<FileReader>>> {
-        self.map.get(session).and_then(|ids| ids.get(id)).cloned()
-    }
-}
-
-pub struct FileReader {
-    buf: BytesMut,
-    read_marker: BitVec,
-    chunk_size: usize,
-}
-
-impl FileReader {
-    pub fn new(size: usize, chunk_size: usize) -> Self {
-        Self {
-            buf: BytesMut::with_capacity(size),
-            read_marker: BitVec::with_capacity((size / chunk_size).max(1)),
-            chunk_size,
-        }
-    }
-
-    pub fn read(&mut self, chunk: &[u8], offset: usize) -> Result<()> {
-        let start = offset * self.chunk_size;
-        let end = start + self.chunk_size;
-        let max = self.buf.len();
-
-        if start > max || end > max {
-            return Err(anyhow!("oversized read"));
-        }
-
-        self.buf[start..end].copy_from_slice(chunk);
-        self.read_marker.set(offset, true);
 
         Ok(())
     }
 
-    pub fn done(&self) -> Option<Vec<(usize, usize)>> {
+    pub async fn get(&self, session: &str, id: &str) -> Option<Arc<RwLock<FileHandler>>> {
+        self.map.get(session).and_then(|ids| ids.get(id)).cloned()
+    }
+}
+
+pub struct FileHandler {
+    pub file_path: PathBuf,
+    file: Option<File>,
+    read_marker: BitVec,
+    chunk_size: usize,
+    size: usize,
+}
+
+impl FileHandler {
+    pub async fn new(size: usize, chunk_size: usize) -> Result<Self> {
+        let filename = format!("localex-tmp-{}", uuid::Uuid::new_v4());
+        let path = dirs::cache_dir()
+            .unwrap_or(PathBuf::from("./"))
+            .join(filename);
+        let file = File::create(&path).await?;
+
+        Ok(Self {
+            read_marker: BitVec::with_capacity((size / chunk_size).max(1)),
+            file: Some(file),
+            file_path: path,
+            size,
+            chunk_size,
+        })
+    }
+
+    pub async fn write(&mut self, chunk: &[u8], offset: usize) -> Result<()> {
+        let start = offset * self.chunk_size;
+        let end = start + self.chunk_size;
+
+        if start > self.size || end > self.size {
+            return Err(anyhow!("oversized read"));
+        }
+
+        if let Some(file) = &mut self.file {
+            file.seek(SeekFrom::Start(start as u64)).await?;
+            file.write_all(chunk).await?;
+            self.read_marker.set(offset, true);
+        }
+
+        Ok(())
+    }
+
+    pub fn done(&mut self) -> Option<Vec<(usize, usize)>> {
         if self.read_marker.all() {
+            if let Some(a) = self.file.take() { drop(a) }
             None
         } else {
             Some(self.read_marker.get_zero_ranges())
         }
-    }
-
-    pub fn into_inner(self) -> Vec<u8> {
-        self.buf.to_vec()
     }
 }

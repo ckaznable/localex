@@ -22,7 +22,7 @@ use protocol::{
 use tokio::sync::broadcast;
 use tracing::error;
 
-use crate::{reader::FileReaderManager, store::DaemonDataStore};
+use crate::{reader::FileHandleManager, store::DaemonDataStore};
 
 pub struct Daemon {
     swarm: Swarm<LocalExBehaviour>,
@@ -33,7 +33,7 @@ pub struct Daemon {
     ctrlc_rx: broadcast::Receiver<()>,
     store: Box<dyn DaemonDataStore + Send + Sync>,
     files_register_store: HashMap<String, FilesRegisterItem>,
-    file_reader_manager: FileReaderManager,
+    file_reader_manager: FileHandleManager,
 }
 
 impl Daemon {
@@ -60,7 +60,7 @@ impl Daemon {
             auth_channels: HashMap::new(),
             files_register_store: HashMap::new(),
             ctrlc_rx: rx,
-            file_reader_manager: FileReaderManager::default(),
+            file_reader_manager: FileHandleManager::default(),
         })
     }
 
@@ -141,14 +141,14 @@ impl LocalExProtocol for Daemon {
 #[async_trait]
 impl FileReaderClient for Daemon {
     async fn read(&mut self, session: &str, id: &str, chunk: FileChunk) -> Result<()> {
-        let reader = self
+        let handler = self
             .file_reader_manager
-            .get_reader(session, id)
+            .get(session, id)
             .await
             .ok_or_else(|| anyhow!("session and id not found"))?;
 
-        let mut reader = reader.write().await;
-        reader.read(&chunk.chunk, chunk.offset)
+        let mut writer = handler.write().await;
+        writer.write(&chunk.chunk, chunk.offset).await
     }
 
     async fn ready(
@@ -164,13 +164,13 @@ impl FileReaderClient for Daemon {
     }
 
     async fn done(&mut self, session: &str, id: &str) -> Option<Vec<(usize, usize)>> {
-        let reader = self
+        let handler = self
             .file_reader_manager
-            .get_reader(session, id)
+            .get(session, id)
             .await?;
 
-        let reader = reader.read().await;
-        reader.done()
+        let mut handler = handler.write().await;
+        handler.done()
     }
 }
 

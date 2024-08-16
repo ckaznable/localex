@@ -168,9 +168,7 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
             Message { peer, message } => {
                 use request_response::Message::*;
                 match message {
-                    Request {
-                        request, channel, ..
-                    } => {
+                    Request { request, channel, .. } => {
                         self.handle_file_reciver(channel, request).await?;
                     }
                     Response { response, .. } => {
@@ -244,7 +242,7 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
         use FileRequestPayload::*;
         match payload {
             Done => {
-                if let Some(fail_ranges) = self.done(&session, &id).await {
+                if let Some(_fail_ranges) = self.done(&session, &id).await {
                     todo!()
                 }
             }
