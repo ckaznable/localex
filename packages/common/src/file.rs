@@ -15,13 +15,6 @@ pub enum FileRequestPayload {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct LocalExFileRequest {
-    pub id: String,
-    pub session: String,
-    pub payload: FileRequestPayload,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
 pub enum ChunkResult {
     Success,
     Fail,
@@ -42,8 +35,11 @@ pub enum FileResponsePayload {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct LocalExFileResponse {
+pub struct LocalExFilePacket<T> {
     pub id: String,
     pub session: String,
-    pub payload: FileResponsePayload,
+    pub payload: T,
 }
+
+pub type LocalExFileRequest = LocalExFilePacket<FileRequestPayload>;
+pub type LocalExFileResponse = LocalExFilePacket<FileResponsePayload>;
