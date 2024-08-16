@@ -1,7 +1,6 @@
 use anyhow::{anyhow, Result};
 use std::{collections::HashMap, io::SeekFrom, path::PathBuf, sync::Arc};
 
-use common::BitVec;
 use tokio::{fs::File, io::{AsyncSeekExt, AsyncWriteExt}, sync::RwLock};
 
 #[derive(Default)]
@@ -28,15 +27,29 @@ impl FileHandleManager {
         Ok(())
     }
 
-    pub async fn get(&self, session: &str, id: &str) -> Option<Arc<RwLock<FileHandler>>> {
+    pub fn get(&self, session: &str, id: &str) -> Option<Arc<RwLock<FileHandler>>> {
         self.map.get(session).and_then(|ids| ids.get(id)).cloned()
+    }
+
+    pub fn remove(&mut self, session: &str, id: &str) {
+        if !self.map.contains_key(session) {
+            return;
+        }
+
+        if self.map.len() == 1 {
+            self.map.remove(session);
+            return;
+        }
+
+        if let Some(ids) = self.map.get_mut(session) {
+            ids.remove(id);
+        }
     }
 }
 
 pub struct FileHandler {
-    pub file_path: PathBuf,
+    file_path: PathBuf,
     file: Option<File>,
-    read_marker: BitVec,
     chunk_size: usize,
     size: usize,
 }
@@ -50,9 +63,8 @@ impl FileHandler {
         let file = File::create(&path).await?;
 
         Ok(Self {
-            read_marker: BitVec::with_capacity((size / chunk_size).max(1)),
-            file: Some(file),
             file_path: path,
+            file: Some(file),
             size,
             chunk_size,
         })
@@ -69,18 +81,17 @@ impl FileHandler {
         if let Some(file) = &mut self.file {
             file.seek(SeekFrom::Start(start as u64)).await?;
             file.write_all(chunk).await?;
-            self.read_marker.set(offset, true);
         }
 
         Ok(())
     }
 
-    pub fn done(&mut self) -> Option<Vec<(usize, usize)>> {
-        if self.read_marker.all() {
-            if let Some(a) = self.file.take() { drop(a) }
-            None
-        } else {
-            Some(self.read_marker.get_zero_ranges())
+    pub fn move_to_dest<T: Into<PathBuf>>(&mut self, dest: T) -> Result<()> {
+        if let Some(file) = self.file.take() {
+            drop(file);
         }
+
+        std::fs::rename(&self.file_path, dest.into())
+            .map_err(anyhow::Error::from)
     }
 }

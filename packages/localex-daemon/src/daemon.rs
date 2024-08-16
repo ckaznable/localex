@@ -144,7 +144,6 @@ impl FileReaderClient for Daemon {
         let handler = self
             .file_reader_manager
             .get(session, id)
-            .await
             .ok_or_else(|| anyhow!("session and id not found"))?;
 
         let mut writer = handler.write().await;
@@ -159,18 +158,25 @@ impl FileReaderClient for Daemon {
         _chunks: usize,
         chunk_size: usize,
     ) -> Result<()> {
-        self.file_reader_manager.add(session.to_string(), id.to_string(), size, chunk_size).await;
-        Ok(())
+        self.file_reader_manager
+            .add(session.to_string(), id.to_string(), size, chunk_size)
+            .await
     }
 
-    async fn done(&mut self, session: &str, id: &str) -> Option<Vec<(usize, usize)>> {
+    async fn done(&mut self, session: &str, id: &str) -> Result<()> {
+        let Some(FilesRegisterItem { path }) = self.files_register_store.get(id) else {
+            return Err(anyhow!("id not registered"));
+        };
+
         let handler = self
             .file_reader_manager
             .get(session, id)
-            .await?;
-
+            .ok_or_else(|| anyhow!("session and id not found"))?;
         let mut handler = handler.write().await;
-        handler.done()
+        handler.move_to_dest(path)?;
+
+        self.file_reader_manager.remove(session, id);
+        Ok(())
     }
 }
 

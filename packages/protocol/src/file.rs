@@ -97,7 +97,7 @@ impl FileSender {
 
 #[async_trait]
 pub trait FileReaderClient {
-    async fn done(&mut self, session: &str, id: &str) -> Option<Vec<(usize, usize)>>;
+    async fn done(&mut self, session: &str, id: &str) -> Result<()>;
     async fn read(&mut self, session: &str, id: &str, chunk: FileChunk) -> Result<()>;
     async fn ready(
         &mut self,
@@ -110,7 +110,7 @@ pub trait FileReaderClient {
 }
 
 pub struct FilesRegisterItem {
-    path: PathBuf,
+    pub path: PathBuf,
 }
 
 pub trait FilesRegisterCenter {
@@ -241,11 +241,7 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
 
         use FileRequestPayload::*;
         match payload {
-            Done => {
-                if let Some(_fail_ranges) = self.done(&session, &id).await {
-                    todo!()
-                }
-            }
+            Done => { }
             Chunk {
                 data,
                 offset,

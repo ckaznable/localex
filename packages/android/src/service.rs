@@ -165,7 +165,7 @@ impl FileReaderClient for Service {
         todo!()
     }
 
-    async fn done(&mut self, session: &str, id: &str) -> Option<Vec<(usize, usize)>> {
+    async fn done(&mut self, session: &str, id: &str) -> anyhow::Result<()> {
         todo!()
     }
 
