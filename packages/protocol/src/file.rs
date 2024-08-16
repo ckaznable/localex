@@ -123,6 +123,7 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
     fn send_file_rr_response(
         &mut self,
         session: String,
+        id: String,
         channel: ResponseChannel<LocalExFileResponse>,
         payload: FileResponsePayload,
     ) -> Result<()> {
@@ -130,7 +131,7 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
             .swarm_mut()
             .behaviour_mut()
             .rr_file
-            .send_response(channel, LocalExFileResponse { session, payload })
+            .send_response(channel, LocalExFileResponse { session, id, payload })
             .is_err()
         {
             Err(anyhow!("send file response error"))
@@ -143,12 +144,13 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
         &mut self,
         peer: &PeerId,
         session: String,
+        id: String,
         payload: FileRequestPayload,
     ) {
         self.swarm_mut()
             .behaviour_mut()
             .rr_file
-            .send_request(peer, LocalExFileRequest { session, payload });
+            .send_request(peer, LocalExFileRequest { session, id, payload });
     }
 
     async fn handle_file_event(
@@ -212,7 +214,7 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
             self.send_chunk(session.clone(), id.clone(), peer, CHUNK_SIZE * index, data);
         }
 
-        self.send_file_rr_request(peer, session, FileRequestPayload::Done { id });
+        self.send_file_rr_request(peer, session, id, FileRequestPayload::Done);
         Ok(())
     }
 
@@ -227,7 +229,8 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
         self.send_file_rr_request(
             peer,
             session,
-            FileRequestPayload::Chunk { id, offset, data },
+            id,
+            FileRequestPayload::Chunk { offset, data },
         );
     }
 
@@ -236,21 +239,20 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
         channel: ResponseChannel<LocalExFileResponse>,
         request: LocalExFileRequest,
     ) -> Result<()> {
-        let LocalExFileRequest { session, payload } = request;
+        let LocalExFileRequest { session, id, payload } = request;
 
         use FileRequestPayload::*;
         match payload {
-            Done { id } => {
+            Done => {
                 if let Some(fail_ranges) = self.done(&session, &id).await {
                     todo!()
                 }
             }
             Chunk {
-                id,
-                data: chunk,
+                data,
                 offset,
             } => {
-                let chunk = FileSender::decompress_chunk(&chunk).await?;
+                let chunk = FileSender::decompress_chunk(&data).await?;
                 let chunk = FileChunk { chunk, offset };
                 let result = match self.read(&session, &id, chunk).await {
                     Ok(_) => ChunkResult::Success,
@@ -259,18 +261,18 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
 
                 self.send_file_rr_response(
                     session,
+                    id,
                     channel,
-                    FileResponsePayload::Checked { id, result, offset },
+                    FileResponsePayload::Checked { result, offset },
                 )?;
             }
             Ready {
-                id,
                 size,
                 chunks,
                 chunk_size,
             } => {
                 self.ready(&session, &id, size, chunks, chunk_size).await?;
-                self.send_file_rr_response(session, channel, FileResponsePayload::Ready { id })?;
+                self.send_file_rr_response(session, id, channel, FileResponsePayload::Ready)?;
             }
         };
 
@@ -282,11 +284,11 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
         peer: PeerId,
         response: LocalExFileResponse,
     ) -> Result<()> {
-        let LocalExFileResponse { session, payload } = response;
+        let LocalExFileResponse { session, id, payload } = response;
 
         use FileResponsePayload::*;
         match payload {
-            Ready { id } | RequestFile { id } => {
+            Ready | RequestFile => {
                 if let Some(item) = self.store().get(&id) {
                     self.send_file(session, id, &peer, item.path.clone()).await?;
                 }
@@ -294,11 +296,8 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
             RequestChunk { .. } => {
                 todo!()
             }
-            Checked { result, .. } => {
-                match result {
-                    ChunkResult::Success => todo!(),
-                    ChunkResult::Fail => todo!(),
-                }
+            Checked { .. } => {
+                // TODO
             }
         }
 

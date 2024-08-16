@@ -2,16 +2,12 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum FileRequestPayload {
-    Done {
-        id: String,
-    },
+    Done,
     Chunk {
-        id: String,
         data: Vec<u8>,
         offset: usize,
     },
     Ready {
-        id: String,
         size: usize,
         chunks: usize,
         chunk_size: usize,
@@ -20,6 +16,7 @@ pub enum FileRequestPayload {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LocalExFileRequest {
+    pub id: String,
     pub session: String,
     pub payload: FileRequestPayload,
 }
@@ -32,19 +29,13 @@ pub enum ChunkResult {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum FileResponsePayload {
-    Ready {
-        id: String,
-    },
+    Ready,
     RequestChunk {
-        id: String,
         offset: usize,
         end: usize,
     },
-    RequestFile {
-        id: String,
-    },
+    RequestFile,
     Checked {
-        id: String,
         result: ChunkResult,
         offset: usize,
     },
@@ -52,6 +43,7 @@ pub enum FileResponsePayload {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LocalExFileResponse {
+    pub id: String,
     pub session: String,
     pub payload: FileResponsePayload,
 }
