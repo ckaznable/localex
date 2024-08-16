@@ -2,7 +2,6 @@ uniffi::setup_scaffolding!();
 
 use error::FFIError;
 use ffi::{FFIClientEvent, FFIDaemonEvent};
-use futures::executor::block_on;
 use libp2p::identity::Keypair;
 use common::event::ClientEvent;
 use global::*;
@@ -57,14 +56,12 @@ pub async fn recv() -> Result<FFIDaemonEvent, FFIError> {
 
 #[uniffi::export(async_runtime = "tokio")]
 pub async fn listen() -> Result<(), FFIError> {
-    block_on(async {
-        get_service()?
-            .lock()
-            .await
-            .listen()
-            .await
-            .map_err(|_| FFIError::Unknown)
-    })
+    get_service()?
+        .lock()
+        .await
+        .listen()
+        .await
+        .map_err(|_| FFIError::Unknown)
 }
 
 #[uniffi::export(name = "getKeyPair")]
