@@ -36,13 +36,11 @@ impl FileHandleManager {
             return;
         }
 
-        if self.map.len() == 1 {
-            self.map.remove(session);
-            return;
-        }
+        let ids = self.map.get_mut(session).unwrap();
+        ids.remove(id);
 
-        if let Some(ids) = self.map.get_mut(session) {
-            ids.remove(id);
+        if ids.is_empty() {
+            self.map.remove(session);
         }
     }
 }
