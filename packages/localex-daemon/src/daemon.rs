@@ -164,7 +164,7 @@ impl FileReaderClient for Daemon {
     }
 
     async fn done(&mut self, session: &str, id: &str) -> Result<()> {
-        let Some(FilesRegisterItem { path }) = self.files_register_store.get(id) else {
+        let Some(FilesRegisterItem::FilePath(path)) = self.files_register_store.get(id) else {
             return Err(anyhow!("id not registered"));
         };
 

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use anyhow::{anyhow, Result};
 use async_compression::tokio::write::{ZstdDecoder, ZstdEncoder};
@@ -8,17 +8,12 @@ use common::file::{
 };
 use futures::future::join_all;
 use libp2p::{
-    request_response::{self, ResponseChannel},
-    PeerId,
+    bytes::Bytes, request_response::{self, ResponseChannel}, PeerId
 };
 use tokio::{
-    fs::File,
-    io::{AsyncReadExt, AsyncWriteExt},
-    sync::{
-        broadcast::{self, error::TryRecvError},
-        mpsc,
-    },
-    task::JoinHandle,
+    fs::File, io::{AsyncRead, AsyncReadExt, AsyncWriteExt}, sync::{
+        broadcast::{self, error::TryRecvError}, mpsc, Mutex
+    }, task::JoinHandle
 };
 use tracing::error;
 
@@ -32,21 +27,58 @@ pub struct FileChunk {
     pub offset: usize,
 }
 
-struct FileSender;
-impl FileSender {
-    async fn send(
-        file_path: PathBuf,
+async fn compress_chunk(chunk: &[u8]) -> Result<Vec<u8>> {
+    let mut encoder = ZstdEncoder::new(Vec::new());
+    encoder.write_all(chunk).await?;
+    encoder.shutdown().await?;
+    Ok(encoder.into_inner())
+}
+
+async fn decompress_chunk(chunk: &[u8]) -> Result<Vec<u8>> {
+    let mut decoder = ZstdDecoder::new(Vec::new());
+    decoder.write_all(chunk).await?;
+    decoder.shutdown().await?;
+    Ok(decoder.into_inner())
+}
+
+#[async_trait]
+pub trait FileReaderClient {
+    async fn done(&mut self, session: &str, id: &str) -> Result<()>;
+    async fn read(&mut self, session: &str, id: &str, chunk: FileChunk) -> Result<()>;
+    async fn ready(
+        &mut self,
+        session: &str,
+        id: &str,
+        size: usize,
+        chunks: usize,
+        chunk_size: usize,
+    ) -> Result<()>;
+}
+
+#[derive(Clone)]
+pub enum FilesRegisterItem {
+    FilePath(PathBuf),
+    Raw(Bytes),
+}
+
+impl FilesRegisterItem {
+    async fn chunk_and_compress(
+        &mut self,
         tx: mpsc::Sender<(usize, Vec<u8>)>,
         mut abort_rx: broadcast::Receiver<()>,
     ) -> Result<()> {
-        let mut input_file = File::open(file_path).await?;
-
         let mut buffer = vec![0u8; CHUNK_SIZE];
         let mut compress_tasks = Vec::new();
         let mut i = 0usize;
 
+        use FilesRegisterItem::*;
+        let mut input: Box<dyn AsyncRead + Unpin + Send> = match self {
+            FilePath(path) => Box::new(File::open(path).await?),
+            Raw(raw) => Box::new(&raw[..]),
+        };
+
         loop {
-            let bytes_read = input_file.read(&mut buffer).await?;
+            let bytes_read = input.read(&mut buffer).await?;
             if bytes_read == 0 {
                 break;
             }
@@ -64,7 +96,7 @@ impl FileSender {
             let tx = tx.clone();
 
             let compress_task: JoinHandle<Result<()>> = tokio::spawn(async move {
-                let compressed_data = Self::compress_chunk(&chunk).await?;
+                let compressed_data = compress_chunk(&chunk).await?;
                 tx.send((i, compressed_data)).await?;
                 Ok(())
             });
@@ -79,38 +111,6 @@ impl FileSender {
 
         Ok(())
     }
-
-    async fn compress_chunk(chunk: &[u8]) -> Result<Vec<u8>> {
-        let mut encoder = ZstdEncoder::new(Vec::new());
-        encoder.write_all(chunk).await?;
-        encoder.shutdown().await?;
-        Ok(encoder.into_inner())
-    }
-
-    async fn decompress_chunk(chunk: &[u8]) -> Result<Vec<u8>> {
-        let mut decoder = ZstdDecoder::new(Vec::new());
-        decoder.write_all(chunk).await?;
-        decoder.shutdown().await?;
-        Ok(decoder.into_inner())
-    }
-}
-
-#[async_trait]
-pub trait FileReaderClient {
-    async fn done(&mut self, session: &str, id: &str) -> Result<()>;
-    async fn read(&mut self, session: &str, id: &str, chunk: FileChunk) -> Result<()>;
-    async fn ready(
-        &mut self,
-        session: &str,
-        id: &str,
-        size: usize,
-        chunks: usize,
-        chunk_size: usize,
-    ) -> Result<()>;
-}
-
-pub struct FilesRegisterItem {
-    pub path: PathBuf,
 }
 
 pub trait FilesRegisterCenter {
@@ -182,19 +182,23 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
         Ok(())
     }
 
-    async fn send_file(
+    async fn do_send_file(
         &mut self,
         session: String,
         id: String,
-        peer: &PeerId,
-        file_path: PathBuf,
+        peer: PeerId,
+        input: FilesRegisterItem,
     ) -> Result<()> {
         let (tx, mut rx) = mpsc::channel(MAX_CONCURRENT_CONNECTIONS);
 
+        let _input = Arc::new(Mutex::new(input));
+        let input = _input.clone();
+
         let mut abort_rx = self.abort_rx();
         let _abort_rx = abort_rx.resubscribe();
-        tokio::spawn(async move {
-            if let Err(e) = FileSender::send(file_path, tx, _abort_rx).await {
+        let handle = tokio::spawn(async move {
+            let mut input = input.lock().await;
+            if let Err(e) = input.chunk_and_compress(tx, _abort_rx).await {
                 error!("{e:?}");
             };
         });
@@ -209,10 +213,11 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
                 }
             }
 
-            self.send_chunk(session.clone(), id.clone(), peer, CHUNK_SIZE * index, data);
+            self.send_chunk(session.clone(), id.clone(), &peer, CHUNK_SIZE * index, data);
         }
 
-        self.send_file_rr_request(peer, session, id, FileRequestPayload::Done);
+        handle.await?;
+        self.send_file_rr_request(&peer, session, id, FileRequestPayload::Done);
         Ok(())
     }
 
@@ -246,7 +251,7 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
                 data,
                 offset,
             } => {
-                let chunk = FileSender::decompress_chunk(&data).await?;
+                let chunk = decompress_chunk(&data).await?;
                 let chunk = FileChunk { chunk, offset };
                 let result = match self.read(&session, &id, chunk).await {
                     Ok(_) => ChunkResult::Success,
@@ -284,7 +289,7 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
         match payload {
             Ready | RequestFile => {
                 if let Some(item) = self.store().get(&id) {
-                    self.send_file(session, id, &peer, item.path.clone()).await?;
+                    self.do_send_file(session, id, peer, item.clone()).await?;
                 }
             }
             RequestChunk { .. } => {
