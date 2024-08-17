@@ -56,7 +56,7 @@ impl FileHandler {
     pub async fn new(size: usize, chunk_size: usize) -> Result<Self> {
         let filename = format!("localex-tmp-{}", uuid::Uuid::new_v4());
         let path = dirs::cache_dir()
-            .unwrap_or(PathBuf::from("./"))
+            .unwrap_or_else(|| PathBuf::from("./"))
             .join(filename);
         let file = File::create(&path).await?;
 

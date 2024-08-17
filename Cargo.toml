@@ -13,6 +13,9 @@ members = [
   "packages/protocol",
   "packages/uniffi-bindgen",
 ]
+exclude = [
+  "examples/send-file",
+]
 
 [profile.release]
 opt-level = "z"
