@@ -4,12 +4,20 @@ use serde::{Deserialize, Serialize};
 use crate::peer::DaemonPeer;
 
 #[derive(Clone, Serialize, Deserialize)]
+pub enum ClientFileId {
+    Path(String),
+    Raw(Vec<u8>),
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub enum ClientEvent {
     RequestVerify(PeerId),
     RequestLocalInfo,
     RequestPeerList,
     DisconnectPeer(PeerId),
     VerifyConfirm(PeerId, bool),
+    RegistFileId(String, ClientFileId),
+    UnRegistFileId(String),
 }
 
 #[derive(Clone, Serialize, Deserialize)]

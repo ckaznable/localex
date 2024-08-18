@@ -166,6 +166,12 @@ pub trait LocalExProtocol: Send + LocalExSwarm + FileTransferClientProtocol {
                 info!("client request peer list");
                 self.send_peers().await;
             }
+            RegistFileId(id, file) => {
+                self.regist(id, file.into());
+            }
+            UnRegistFileId(id) => {
+                self.unregist(&id);
+            }
         }
 
         Ok(())

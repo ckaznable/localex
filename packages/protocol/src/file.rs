@@ -3,9 +3,9 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use anyhow::{anyhow, Result};
 use async_compression::tokio::write::{ZstdDecoder, ZstdEncoder};
 use async_trait::async_trait;
-use common::file::{
+use common::{event::ClientFileId, file::{
     ChunkResult, FileRequestPayload, FileResponsePayload, LocalExFileRequest, LocalExFileResponse,
-};
+}};
 use futures::future::join_all;
 use libp2p::{
     bytes::Bytes, request_response::{self, ResponseChannel}, PeerId
@@ -113,9 +113,26 @@ impl FilesRegisterItem {
     }
 }
 
+impl From<ClientFileId> for FilesRegisterItem {
+    fn from(value: ClientFileId) -> Self {
+        match value {
+            ClientFileId::Path(p) => Self::FilePath(PathBuf::from(p)),
+            ClientFileId::Raw(r) => Self::Raw(Bytes::from(r)),
+        }
+    }
+}
+
 pub trait FilesRegisterCenter {
     fn store(&self) -> &HashMap<String, FilesRegisterItem>;
     fn store_mut(&mut self) -> &mut HashMap<String, FilesRegisterItem>;
+
+    fn regist(&mut self, id: String, item: FilesRegisterItem) {
+        self.store_mut().insert(id, item);
+    }
+
+    fn unregist(&mut self, id: &str) {
+        self.store_mut().remove(id);
+    }
 }
 
 #[async_trait]
