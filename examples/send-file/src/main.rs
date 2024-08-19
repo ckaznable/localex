@@ -1,6 +1,10 @@
 #![allow(clippy::single_match)]
 
-use std::{fs::File, io::{BufReader, Read}, path::PathBuf};
+use std::{
+    fs::File,
+    io::{BufReader, Read},
+    path::PathBuf,
+};
 
 use anyhow::Result;
 use common::{
@@ -17,7 +21,12 @@ use futures::{FutureExt, StreamExt};
 use localex_ipc::IPCClient;
 use rand::RngCore;
 use ratatui::{
-    backend::CrosstermBackend, layout::{Constraint, Layout}, style::{Modifier, Style}, text::{Line, Span}, widgets::{Block, List, ListItem, ListState, Paragraph}, Frame, Terminal
+    backend::CrosstermBackend,
+    layout::{Constraint, Layout},
+    style::{Modifier, Style},
+    text::{Line, Span},
+    widgets::{Block, List, ListItem, ListState, Paragraph},
+    Frame, Terminal,
 };
 use tokio::sync::broadcast;
 
@@ -112,7 +121,7 @@ impl App {
         match event {
             DaemonEvent::PeerList(list) => {
                 self.state.list = list;
-            },
+            }
             DaemonEvent::FileUpdated(id, path) => {
                 if id != FILE_ID {
                     return Ok(());
@@ -137,7 +146,7 @@ impl App {
                 let md5_string = format!("{:x}", result);
                 self.state.remote_md5_checksum = Some(md5_string);
             }
-            _ => {},
+            _ => {}
         }
 
         Ok(())
@@ -152,7 +161,9 @@ impl App {
             Enter => {
                 let i = self.state.list_state.selected().unwrap_or(0);
                 if let Some(peer) = self.state.list.get(i) {
-                    self.client.send(ClientEvent::SendFile(peer.peer_id, FILE_ID.to_string())).await;
+                    self.client
+                        .send(ClientEvent::SendFile(peer.peer_id, FILE_ID.to_string()))
+                        .await;
                 }
             }
             _ => {}
@@ -177,7 +188,11 @@ impl App {
             .block(Block::bordered().title("local"));
         f.render_widget(remote_block, remote_area);
 
-        let items: Vec<ListItem> = state.list.iter().map(|p| ListItem::from(p.peer_id.to_string())).collect();
+        let items: Vec<ListItem> = state
+            .list
+            .iter()
+            .map(|p| ListItem::from(p.peer_id.to_string()))
+            .collect();
         let list = List::new(items)
             .block(Block::bordered())
             .highlight_style(Style::new().add_modifier(Modifier::REVERSED))
