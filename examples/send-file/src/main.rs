@@ -113,7 +113,11 @@ impl App {
             DaemonEvent::PeerList(list) => {
                 self.state.list = list;
             },
-            DaemonEvent::FileUpdated(_, path) => {
+            DaemonEvent::FileUpdated(id, path) => {
+                if id != FILE_ID {
+                    return Ok(());
+                }
+
                 let path = PathBuf::from(path);
                 let file = File::open(path)?;
                 let mut reader = BufReader::new(file);
