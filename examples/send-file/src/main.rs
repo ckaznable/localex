@@ -1,5 +1,7 @@
 #![allow(clippy::single_match)]
 
+use std::{fs::File, io::{BufReader, Read}, path::PathBuf};
+
 use anyhow::Result;
 use common::{
     event::{ClientEvent, ClientFileId, DaemonEvent},
@@ -86,7 +88,7 @@ impl App {
                     self.handle_input(code).await;
                 },
                 event = self.client.recv() => {
-                    self.handle_deamon(event).await;
+                    self.handle_deamon(event).await?;
                 },
             }
 
@@ -106,14 +108,35 @@ impl App {
         self.state.raw = raw;
     }
 
-    async fn handle_deamon(&mut self, event: DaemonEvent) {
+    async fn handle_deamon(&mut self, event: DaemonEvent) -> Result<()> {
         match event {
             DaemonEvent::PeerList(list) => {
                 self.state.list = list;
-                self.state.list_state.select(Some(0));
             },
-            _ => todo!(),
+            DaemonEvent::FileUpdated(_, path) => {
+                let path = PathBuf::from(path);
+                let file = File::open(path)?;
+                let mut reader = BufReader::new(file);
+
+                let mut hasher = md5::Context::new();
+
+                let mut buffer = [0; 1024];
+                loop {
+                    let bytes_read = reader.read(&mut buffer)?;
+                    if bytes_read == 0 {
+                        break;
+                    }
+                    hasher.consume(&buffer[..bytes_read]);
+                }
+
+                let result = hasher.compute();
+                let md5_string = format!("{:x}", result);
+                self.state.remote_md5_checksum = Some(md5_string);
+            }
+            _ => {},
         }
+
+        Ok(())
     }
 
     async fn handle_input(&mut self, code: KeyCode) {
@@ -123,7 +146,10 @@ impl App {
             Char('j') => self.state.list_state.select_next(),
             Char('k') => self.state.list_state.select_previous(),
             Enter => {
-                todo!()
+                let i = self.state.list_state.selected().unwrap_or(0);
+                if let Some(peer) = self.state.list.get(i) {
+                    self.client.send(ClientEvent::SendFile(peer.peer_id, FILE_ID.to_string())).await;
+                }
             }
             _ => {}
         }
