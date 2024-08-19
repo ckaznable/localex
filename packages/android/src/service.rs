@@ -10,7 +10,7 @@ use libp2p::{
     PeerId, Swarm,
 };
 use network::{new_swarm, LocalExBehaviour};
-use protocol::{file::{FileChunk, FileReaderClient, FileTransferClientProtocol, FilesRegisterCenter, FilesRegisterItem}, AbortListener, GossipTopic, LocalExProtocol, LocalExSwarm};
+use protocol::{file::{FileChunk, FileReaderClient, FileTransferClientProtocol, FilesRegisterCenter, FilesRegisterItem}, AbortListener, EventEmitter, GossipTopic, LocalExProtocol, LocalExSwarm};
 use tokio::sync::{mpsc, Mutex};
 
 use crate::{error::FFIError, ffi::FFIDaemonEvent, get_client_event_receiver, get_quit_rx};
@@ -113,6 +113,16 @@ impl LocalExSwarm for Service {
 }
 
 #[async_trait]
+impl EventEmitter<DaemonEvent> for Service {
+    async fn emit_event(&mut self, event: DaemonEvent) -> anyhow::Result<()> {
+        self.daemon_tx
+            .send(event.into())
+            .await
+            .map_err(anyhow::Error::from)
+    }
+}
+
+#[async_trait]
 impl LocalExProtocol for Service {
     fn hostname(&self) -> String {
         self.hostname.clone()
@@ -147,12 +157,6 @@ impl LocalExProtocol for Service {
 
     fn on_add_peer(&mut self, _: PeerId) {}
 
-    async fn send_daemon_event(&mut self, event: DaemonEvent) -> anyhow::Result<()> {
-        self.daemon_tx
-            .send(event.into())
-            .await
-            .map_err(anyhow::Error::from)
-    }
 }
 
 #[async_trait]
@@ -161,7 +165,7 @@ impl FileReaderClient for Service {
         todo!()
     }
 
-    async fn ready(&mut self, session: &str, id: &str, size: usize, chunks: usize, chunk_size: usize) -> anyhow::Result<()> {
+    async fn ready(&mut self, session: &str, id: &str, size: usize, chunk_size: usize) -> anyhow::Result<()> {
         todo!()
     }
 

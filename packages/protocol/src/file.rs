@@ -15,7 +15,7 @@ use tokio::{
         broadcast::{self, error::TryRecvError}, mpsc, Mutex
     }, task::JoinHandle
 };
-use tracing::error;
+use tracing::{error, info};
 
 use crate::{AbortListener, LocalExSwarm};
 
@@ -50,7 +50,6 @@ pub trait FileReaderClient {
         session: &str,
         id: &str,
         size: usize,
-        chunks: usize,
         chunk_size: usize,
     ) -> Result<()>;
 }
@@ -254,6 +253,29 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
         );
     }
 
+    fn send_file(&mut self, peer: &PeerId, id: String) -> Result<()> {
+        let item = self.store().get(&id).ok_or_else(|| anyhow!("can't not get item"))?;
+        let payload: FileRequestPayload = match item {
+            FilesRegisterItem::FilePath(path) => {
+                let metadata = std::fs::metadata(path)?;
+                FileRequestPayload::Ready {
+                    size: metadata.len() as usize,
+                    chunk_size: CHUNK_SIZE,
+                }
+            },
+            FilesRegisterItem::Raw(body) => {
+                FileRequestPayload::Ready {
+                    size: body.len(),
+                    chunk_size: CHUNK_SIZE,
+                }
+            },
+        };
+
+        let session = uuid::Uuid::new_v4().to_string();
+        self.send_file_rr_request(peer, session, id, payload);
+        Ok(())
+    }
+
     async fn handle_file_reciver(
         &mut self,
         channel: ResponseChannel<LocalExFileResponse>,
@@ -263,7 +285,10 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
 
         use FileRequestPayload::*;
         match payload {
-            Done => { }
+            Done => {
+                info!("session: {session} id: {id} transfer file done");
+                self.done(&session, &id).await?;
+            }
             Chunk {
                 data,
                 offset,
@@ -284,10 +309,9 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
             }
             Ready {
                 size,
-                chunks,
                 chunk_size,
             } => {
-                self.ready(&session, &id, size, chunks, chunk_size).await?;
+                self.ready(&session, &id, size, chunk_size).await?;
                 self.send_file_rr_response(session, id, channel, FileResponsePayload::Ready)?;
             }
         };
@@ -312,8 +336,11 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
             RequestChunk { .. } => {
                 todo!()
             }
-            Checked { .. } => {
-                // TODO
+            Checked { result, offset } => {
+                info!("transfer chunk offset {} {}", offset, match result {
+                    ChunkResult::Success => "success",
+                    ChunkResult::Fail => "fail",
+                })
             }
         }
 

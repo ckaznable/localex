@@ -18,6 +18,8 @@ pub enum ClientEvent {
     VerifyConfirm(PeerId, bool),
     RegistFileId(String, ClientFileId),
     UnRegistFileId(String),
+    SendFile(PeerId, String),
+    SendCustomMessage(PeerId, Vec<u8>)
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -26,5 +28,7 @@ pub enum DaemonEvent {
     InComingVerify(DaemonPeer),
     PeerList(Vec<DaemonPeer>),
     LocalInfo(String, PeerId),
+    ReceivedCustomMessage(PeerId, Vec<u8>),
+    FileUpdated(String, String),
     Unknown,
 }

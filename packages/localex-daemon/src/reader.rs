@@ -84,12 +84,11 @@ impl FileHandler {
         Ok(())
     }
 
-    pub fn move_to_dest<T: Into<PathBuf>>(&mut self, dest: T) -> Result<()> {
+    pub fn get_file_path(&mut self) -> Result<PathBuf> {
         if let Some(file) = self.file.take() {
             drop(file);
         }
 
-        std::fs::rename(&self.file_path, dest.into())
-            .map_err(anyhow::Error::from)
+        Ok(self.file_path.clone())
     }
 }

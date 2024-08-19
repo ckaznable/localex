@@ -34,6 +34,7 @@ pub struct LocalExBehaviour {
     pub mdns: mdns::tokio::Behaviour,
     pub rr_auth: request_response::cbor::Behaviour<LocalExAuthRequest, LocalExAuthResponse>,
     pub rr_file: request_response::cbor::Behaviour<LocalExFileRequest, LocalExFileResponse>,
+    pub rr_client_custom: request_response::cbor::Behaviour<Vec<u8>, Vec<u8>>,
 }
 
 impl LocalExBehaviour {
@@ -43,6 +44,7 @@ impl LocalExBehaviour {
             mdns: Self::create_mdns_behavior(PeerId::from(key.public())),
             rr_auth: Self::create_auth_request_response(),
             rr_file: Self::create_file_request_response(),
+            rr_client_custom: Self::create_client_custom_request_response(),
         }
     }
 
@@ -50,8 +52,7 @@ impl LocalExBehaviour {
         mdns::tokio::Behaviour::new(mdns::Config::default(), local_peer_id).unwrap()
     }
 
-    fn create_auth_request_response(
-    ) -> request_response::cbor::Behaviour<LocalExAuthRequest, LocalExAuthResponse> {
+    fn create_auth_request_response() -> request_response::cbor::Behaviour<LocalExAuthRequest, LocalExAuthResponse> {
         let protocol = [(
             StreamProtocol::new("/localex/auth/1.0.0"),
             ProtocolSupport::Full,
@@ -61,10 +62,20 @@ impl LocalExBehaviour {
         request_response::cbor::Behaviour::new(protocol, cfg)
     }
 
-    fn create_file_request_response(
-    ) -> request_response::cbor::Behaviour<LocalExFileRequest, LocalExFileResponse> {
+    fn create_file_request_response() -> request_response::cbor::Behaviour<LocalExFileRequest, LocalExFileResponse> {
         let protocol = [(
             StreamProtocol::new("/localex/file/1.0.0"),
+            ProtocolSupport::Full,
+        )];
+        let cfg = request_response::Config::default().with_request_timeout(Duration::from_secs(600));
+
+        request_response::cbor::Behaviour::new(protocol, cfg)
+    }
+
+
+    fn create_client_custom_request_response() -> request_response::cbor::Behaviour<Vec<u8>, Vec<u8>> {
+        let protocol = [(
+            StreamProtocol::new("/localex/client/message/1.0.0"),
             ProtocolSupport::Full,
         )];
         let cfg = request_response::Config::default().with_request_timeout(Duration::from_secs(600));

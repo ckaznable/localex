@@ -16,8 +16,7 @@ use protocol::{
     file::{
         FileChunk, FileReaderClient, FileTransferClientProtocol, FilesRegisterCenter,
         FilesRegisterItem,
-    },
-    AbortListener, GossipTopic, LocalExProtocol, LocalExSwarm,
+    }, AbortListener, EventEmitter, GossipTopic, LocalExProtocol, LocalExSwarm
 };
 use tokio::sync::broadcast;
 use tracing::error;
@@ -99,6 +98,14 @@ impl LocalExSwarm for Daemon {
 }
 
 #[async_trait]
+impl EventEmitter<DaemonEvent> for Daemon {
+    async fn emit_event(&mut self, event: DaemonEvent) -> Result<()> {
+        self.server.broadcast(event).await;
+        Ok(())
+    }
+}
+
+#[async_trait]
 impl LocalExProtocol for Daemon {
     fn hostname(&self) -> String {
         self.hostname.clone()
@@ -132,10 +139,6 @@ impl LocalExProtocol for Daemon {
 
     fn on_add_peer(&mut self, _: PeerId) {}
 
-    async fn send_daemon_event(&mut self, event: DaemonEvent) -> Result<()> {
-        self.server.broadcast(event).await;
-        Ok(())
-    }
 }
 
 #[async_trait]
@@ -155,7 +158,6 @@ impl FileReaderClient for Daemon {
         session: &str,
         id: &str,
         size: usize,
-        _chunks: usize,
         chunk_size: usize,
     ) -> Result<()> {
         self.file_reader_manager
@@ -164,7 +166,7 @@ impl FileReaderClient for Daemon {
     }
 
     async fn done(&mut self, session: &str, id: &str) -> Result<()> {
-        let Some(FilesRegisterItem::FilePath(path)) = self.files_register_store.get(id) else {
+        if !self.files_register_store.contains_key(id) {
             return Err(anyhow!("id not registered"));
         };
 
@@ -173,9 +175,10 @@ impl FileReaderClient for Daemon {
             .get(session, id)
             .ok_or_else(|| anyhow!("session and id not found"))?;
         let mut handler = handler.write().await;
-        handler.move_to_dest(path)?;
+        let tmp_file_path = handler.get_file_path()?;
 
         self.file_reader_manager.remove(session, id);
+        self.emit_event(DaemonEvent::FileUpdated(id.to_string(), tmp_file_path.to_string_lossy().to_string())).await?;
         Ok(())
     }
 }

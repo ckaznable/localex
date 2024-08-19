@@ -20,6 +20,10 @@ impl From<ClientEvent> for FFIClientEvent {
             ClientEvent::RequestPeerList => Self::RequestPeerList,
             ClientEvent::DisconnectPeer(p) => Self::DisconnectPeer(p.to_bytes()),
             ClientEvent::VerifyConfirm(p, result) => Self::VerifyConfirm(p.to_bytes(), result),
+            ClientEvent::RegistFileId(_, _) => todo!(),
+            ClientEvent::UnRegistFileId(_) => todo!(),
+            ClientEvent::SendFile(_, _) => todo!(),
+            ClientEvent::SendCustomMessage(_, _) => todo!(),
         }
     }
 }

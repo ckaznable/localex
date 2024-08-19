@@ -9,7 +9,6 @@ pub enum FileRequestPayload {
     },
     Ready {
         size: usize,
-        chunks: usize,
         chunk_size: usize,
     },
 }

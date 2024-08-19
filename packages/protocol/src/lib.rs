@@ -39,13 +39,18 @@ pub trait AbortListener {
     fn abort_rx(&self) -> broadcast::Receiver<()>;
 }
 
+#[async_trait]
+pub trait EventEmitter<T> {
+    async fn emit_event(&mut self, event: T) -> Result<()>;
+}
+
 #[derive(Hash, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum GossipTopic {
     Hostname,
 }
 
 #[async_trait]
-pub trait LocalExProtocol: Send + LocalExSwarm + FileTransferClientProtocol {
+pub trait LocalExProtocol: Send + LocalExSwarm + FileTransferClientProtocol + EventEmitter<DaemonEvent> {
     fn hostname(&self) -> String;
     fn topics_mut(&mut self) -> &mut HashMap<GossipTopic, TopicHash>;
     fn topics(&self) -> &HashMap<GossipTopic, TopicHash>;
@@ -58,8 +63,6 @@ pub trait LocalExProtocol: Send + LocalExSwarm + FileTransferClientProtocol {
     fn on_remove_peer(&mut self, _: &PeerId);
     fn on_add_peer(&mut self, _: PeerId);
 
-    async fn send_daemon_event(&mut self, event: DaemonEvent) -> Result<()>;
-
     fn broadcast_hostname(&mut self) {
         info!("broadcast hostname to peers");
         let topic = self.topics().get(&GossipTopic::Hostname).unwrap().clone();
@@ -71,7 +74,7 @@ pub trait LocalExProtocol: Send + LocalExSwarm + FileTransferClientProtocol {
 
     async fn send_peers(&mut self) {
         let list = self.get_peers();
-        let _ = self.send_daemon_event(DaemonEvent::PeerList(list)).await;
+        let _ = self.emit_event(DaemonEvent::PeerList(list)).await;
     }
 
     fn remove_peer(&mut self, peer_id: &PeerId) {
@@ -112,12 +115,26 @@ pub trait LocalExProtocol: Send + LocalExSwarm + FileTransferClientProtocol {
     }
 
     async fn handle_event(&mut self, event: LocalExBehaviourEvent) -> Result<()> {
+        use LocalExBehaviourEvent::*;
         match event {
-            LocalExBehaviourEvent::RrAuth(event) => self.handle_auth(event).await,
-            LocalExBehaviourEvent::Gossipsub(event) => self.handle_gossipsub(event).await,
-            LocalExBehaviourEvent::Mdns(event) => self.handle_mdns(event).await,
-            LocalExBehaviourEvent::RrFile(event) => self.handle_file_event(event).await,
+            RrAuth(event) => self.handle_auth(event).await,
+            Gossipsub(event) => self.handle_gossipsub(event).await,
+            Mdns(event) => self.handle_mdns(event).await,
+            RrFile(event) => self.handle_file_event(event).await,
+            RrClientCustom(event) => self.handle_client_cutom_message(event).await,
         }
+    }
+
+    async fn handle_client_cutom_message(
+        &mut self,
+        event: request_response::Event<Vec<u8>, Vec<u8>>,
+    ) -> Result<()> {
+        if let request_response::Event::Message { peer, message: request_response::Message::Request { request, .. } } = event {
+            info!("received custom message from {peer}");
+            self.emit_event(DaemonEvent::ReceivedCustomMessage(peer, request)).await?;
+        }
+
+        Ok(())
     }
 
     async fn handle_client_event(&mut self, event: ClientEvent) -> Result<()> {
@@ -156,7 +173,7 @@ pub trait LocalExProtocol: Send + LocalExSwarm + FileTransferClientProtocol {
             }
             RequestLocalInfo => {
                 info!("client request local info");
-                let _ = self.send_daemon_event(DaemonEvent::LocalInfo(
+                let _ = self.emit_event(DaemonEvent::LocalInfo(
                     self.hostname(),
                     *self.swarm().local_peer_id(),
                 ))
@@ -172,6 +189,13 @@ pub trait LocalExProtocol: Send + LocalExSwarm + FileTransferClientProtocol {
             UnRegistFileId(id) => {
                 self.unregist(&id);
             }
+            SendFile(peer, id) => {
+                info!("send {id} file to {peer}");
+                self.send_file(&peer, id)?;
+            },
+            SendCustomMessage(peer, data) => {
+                self.swarm_mut().behaviour_mut().rr_client_custom.send_request(&peer, data);
+            },
         }
 
         Ok(())
@@ -266,7 +290,7 @@ pub trait LocalExProtocol: Send + LocalExSwarm + FileTransferClientProtocol {
                     peer.clone()
                 };
 
-                let _ = self.send_daemon_event(DaemonEvent::InComingVerify(peer)).await;
+                let _ = self.emit_event(DaemonEvent::InComingVerify(peer)).await;
                 self.send_peers().await;
             }
             Message {
@@ -292,7 +316,7 @@ pub trait LocalExProtocol: Send + LocalExSwarm + FileTransferClientProtocol {
                     .map(|p| p.set_hostname(response.hostname));
                 let _ = self.save_peers();
 
-                let _ = self.send_daemon_event(DaemonEvent::VerifyResult(peer, result)).await;
+                let _ = self.emit_event(DaemonEvent::VerifyResult(peer, result)).await;
                 self.send_peers().await;
             }
             _ => {}
