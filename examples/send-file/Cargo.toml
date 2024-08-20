@@ -12,4 +12,5 @@ tokio = { version = "1.39.2", features = ["full"] }
 crossterm = { version = "0.27.0", features = ["serde", "event-stream"] }
 futures = "0.3.21"
 md5 = "0.7.0"
-rand = "0.8.5"
+rand = { version = "0.8.5", features = ["small_rng"] }
+clap = { version = "4.5.16", features = ["derive"] }

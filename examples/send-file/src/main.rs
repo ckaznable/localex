@@ -7,6 +7,7 @@ use std::{
 };
 
 use anyhow::Result;
+use clap::{command, Parser};
 use common::{
     event::{ClientEvent, ClientFileId, DaemonEvent},
     peer::DaemonPeer,
@@ -32,8 +33,16 @@ use tokio::sync::broadcast;
 
 const FILE_ID: &str = "localex-example1-file-id-xxxx";
 
+#[derive(Parser, Clone)]
+#[command(version, about, long_about = None)]
+pub struct Cli {
+    #[arg(long)]
+    pub sock: Option<PathBuf>,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
+    let param = Cli::parse();
     enable_raw_mode()?;
     let mut stdout = std::io::stdout();
     execute!(stdout, EnterAlternateScreen, DisableMouseCapture)?;
@@ -41,7 +50,7 @@ async fn main() -> Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let terminal = Terminal::new(backend)?;
 
-    let mut app = App::new(terminal).await?;
+    let mut app = App::new(terminal, param.sock).await?;
     app.run().await?;
 
     Ok(())
@@ -65,14 +74,14 @@ struct App {
 }
 
 impl App {
-    async fn new(terminal: Terminal<CrosstermBackend<std::io::Stdout>>) -> Result<Self> {
-        let (quit_tx, rx) = broadcast::channel(0);
+    async fn new(terminal: Terminal<CrosstermBackend<std::io::Stdout>>, sock: Option<PathBuf>) -> Result<Self> {
+        let (quit_tx, rx) = broadcast::channel(1);
         Ok(Self {
             quit_tx,
             terminal,
             state: AppState::default(),
             should_quit: false,
-            client: IPCClient::new(None, rx).await?,
+            client: IPCClient::new(sock, rx).await?,
         })
     }
 
@@ -81,6 +90,7 @@ impl App {
         self.client.prepare().await?;
 
         self.gen_test_raw_data();
+        self.client.send(ClientEvent::RequestPeerList).await;
         self.client
             .send(ClientEvent::RegistFileId(
                 FILE_ID.to_string(),
@@ -103,16 +113,18 @@ impl App {
 
             if self.should_quit {
                 let _ = self.quit_tx.send(());
-                return Ok(());
+                break;
             }
         }
+
+        self.client.send(ClientEvent::UnRegistFileId(FILE_ID.to_string())).await;
+        Ok(())
     }
 
     fn gen_test_raw_data(&mut self) {
         let mut rng = rand::thread_rng();
-        let len: usize = 1024 * 1024 * 10; // 10 MB
-        let mut raw = Vec::with_capacity(len);
-        rng.fill_bytes(&mut raw);
+        let f = rng.next_u32() as u8;
+        let raw = vec![f; 1024 * 1024 * 10];
         self.state.md5_checksum = Some(format!("{:x}", md5::compute(&raw)));
         self.state.raw = raw;
     }
@@ -185,7 +197,7 @@ impl App {
 
         let remote_checksum = state.remote_md5_checksum.clone().unwrap_or("".to_string());
         let remote_block = Paragraph::new(vec![Line::from(Span::raw(remote_checksum))])
-            .block(Block::bordered().title("local"));
+            .block(Block::bordered().title("remote"));
         f.render_widget(remote_block, remote_area);
 
         let items: Vec<ListItem> = state
