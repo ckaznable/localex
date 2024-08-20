@@ -52,14 +52,13 @@ where
         buffer.put_slice(&writer_buf);
 
         let mut attempts = 0;
-        let max_attempts = 5;
+        let max_attempts = 10;
         let mut sent = 0;
 
         while sent < buffer.len() {
             stream.writable().await?;
             match stream.try_write(&buffer[sent..]) {
                 Ok(n) => {
-                    info!("write {} bytes to stream", n);
                     sent += n;
                     attempts = 0;
                 }
@@ -68,7 +67,7 @@ where
                     if attempts >= max_attempts {
                         return Err(anyhow!("Max retry attempts reached"));
                     }
-                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    tokio::time::sleep(Duration::from_millis(10)).await;
                     continue;
                 }
                 Err(e) => {
@@ -177,7 +176,7 @@ where
             read,
             write,
             buf: vec![],
-            read_buf: BytesMut::with_capacity(4096),
+            read_buf: BytesMut::with_capacity(1024 * 1024),
             reading_size: 0,
         }
     }
@@ -192,13 +191,12 @@ where
             if self.buf.is_empty() {
                 let size_byte = &self.read_buf[read..read+4];
                 self.reading_size = u32::from_le_bytes((*size_byte).try_into()?) as usize;
-                info!("reading chunk size: {}", self.reading_size);
                 read += 4;
             }
 
             let remaining = self.reading_size - self.buf.len();
             let remaining = if packet_size < read + remaining {
-                packet_size - read + 1
+                packet_size - read
             } else {
                 remaining
             };
@@ -224,7 +222,6 @@ where
         match self.read.try_read_buf(&mut self.read_buf) {
             Ok(0) => return Err(anyhow!("connection closed")),
             Ok(n) => {
-                info!("read {} bytes from stream", n);
                 self.read_chunk(n).await?;
                 self.read_buf.clear();
             },
