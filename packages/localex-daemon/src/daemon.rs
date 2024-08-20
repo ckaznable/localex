@@ -19,7 +19,7 @@ use protocol::{
     }, AbortListener, EventEmitter, GossipTopic, LocalExProtocol, LocalExSwarm
 };
 use tokio::sync::broadcast;
-use tracing::error;
+use tracing::{error, info};
 
 use crate::{reader::FileHandleManager, store::DaemonDataStore};
 
@@ -42,7 +42,7 @@ impl Daemon {
         sock: Option<PathBuf>,
         store: Box<dyn DaemonDataStore + Send + Sync>,
     ) -> Result<Self> {
-        let (tx, rx) = broadcast::channel(0);
+        let (tx, rx) = broadcast::channel(1);
         let _ = ctrlc::set_handler(move || {
             tx.send(()).expect("close application error");
         });
@@ -160,6 +160,7 @@ impl FileReaderClient for Daemon {
         size: usize,
         chunk_size: usize,
     ) -> Result<()> {
+        info!("file reader ready {session}:{id}");
         self.file_reader_manager
             .add(session.to_string(), id.to_string(), size, chunk_size)
             .await
@@ -167,7 +168,7 @@ impl FileReaderClient for Daemon {
 
     async fn done(&mut self, session: &str, id: &str) -> Result<()> {
         if !self.files_register_store.contains_key(id) {
-            return Err(anyhow!("id not registered"));
+            return Err(anyhow!("file id not registered"));
         };
 
         let handler = self

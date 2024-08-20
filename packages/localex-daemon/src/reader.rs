@@ -10,17 +10,17 @@ pub struct FileHandleManager {
 
 impl FileHandleManager {
     pub async fn add(&mut self, session: String, id: String, size: usize, chunk_size: usize) -> Result<()> {
+        let handler = FileHandler::new(size, chunk_size).await?;
+        let handler = Arc::new(RwLock::new(handler));
+
         match self.map.get_mut(&session) {
             None => {
-                self.map.insert(session, HashMap::new());
+                let mut ids = HashMap::new();
+                ids.insert(id, handler);
+                self.map.insert(session, ids);
             }
             Some(ids) => {
-                if ids.contains_key(&id) {
-                    return Err(anyhow!("id exists"));
-                }
-
-                let handler = FileHandler::new(size, chunk_size).await?;
-                ids.insert(id, Arc::new(RwLock::new(handler)));
+                ids.insert(id, handler);
             }
         }
 
@@ -69,7 +69,7 @@ impl FileHandler {
     }
 
     pub async fn write(&mut self, chunk: &[u8], offset: usize) -> Result<()> {
-        let start = offset * self.chunk_size;
+        let start = offset;
         let end = start + self.chunk_size;
 
         if start > self.size || end > self.size {

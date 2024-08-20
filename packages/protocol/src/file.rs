@@ -297,7 +297,10 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
                 let chunk = FileChunk { chunk, offset };
                 let result = match self.read(&session, &id, chunk).await {
                     Ok(_) => ChunkResult::Success,
-                    Err(_) => ChunkResult::Fail,
+                    Err(e) => {
+                        error!("{e:?}");
+                        ChunkResult::Fail
+                    },
                 };
 
                 self.send_file_rr_response(
@@ -311,6 +314,7 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
                 size,
                 chunk_size,
             } => {
+                info!("file is ready, size: {size}, chunk size: {chunk_size}");
                 self.ready(&session, &id, size, chunk_size).await?;
                 self.send_file_rr_response(session, id, channel, FileResponsePayload::Ready)?;
             }
