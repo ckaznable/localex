@@ -92,7 +92,7 @@ pub fn get_or_create_client_event_channel() -> Result<(ChannelSender<FFIClientEv
 
 pub fn init_quit_channel() {
     unsafe {
-        let (tx, rx) = broadcast::channel(0);
+        let (tx, rx) = broadcast::channel(1);
         QUIT_SENDER = Some(tx);
         QUIT_RECEIVER = Some(rx);
     }
