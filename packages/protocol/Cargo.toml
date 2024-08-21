@@ -15,3 +15,4 @@ tracing = "0.1.40"
 async-trait = "0.1.81"
 uuid = { version = "1.10.0", features = ["v4", "fast-rng", "macro-diagnostics"] }
 async-compression = { version = "0.4.12", features = ["tokio", "zstd"] }
+bimap = "0.6.3"

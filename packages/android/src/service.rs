@@ -3,6 +3,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+use bimap::BiHashMap;
 use common::{auth::LocalExAuthResponse, event::DaemonEvent, peer::DaemonPeer};
 use futures::StreamExt;
 use libp2p::{
@@ -52,7 +53,7 @@ impl ServiceManager {
 
 pub struct Service {
     swarm: Swarm<LocalExBehaviour>,
-    topics: HashMap<GossipTopic, TopicHash>,
+    topics: BiHashMap<TopicHash, GossipTopic>,
     auth_channels: HashMap<PeerId, ResponseChannel<LocalExAuthResponse>>,
     hostname: String,
     peers: BTreeMap<PeerId, DaemonPeer>,
@@ -71,7 +72,7 @@ impl Service {
             hostname,
             daemon_tx,
             auth_channels: HashMap::new(),
-            topics: HashMap::new(),
+            topics: BiHashMap::new(),
             peers: BTreeMap::new(),
             files_register_store: HashMap::new(),
         })
@@ -128,11 +129,11 @@ impl LocalExProtocol for Service {
         self.hostname.clone()
     }
 
-    fn topics_mut(&mut self) -> &mut HashMap<protocol::GossipTopic, TopicHash> {
+    fn topics_mut(&mut self) -> &mut BiHashMap<TopicHash, protocol::GossipTopic> {
         &mut self.topics
     }
 
-    fn topics(&self) -> &HashMap<protocol::GossipTopic, TopicHash> {
+    fn topics(&self) -> &BiHashMap<TopicHash, protocol::GossipTopic> {
         &self.topics
     }
 

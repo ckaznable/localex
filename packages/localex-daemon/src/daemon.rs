@@ -5,6 +5,7 @@ use std::{
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
+use bimap::BiHashMap;
 use common::{auth::LocalExAuthResponse, event::DaemonEvent, peer::DaemonPeer};
 use futures::StreamExt;
 use libp2p::{
@@ -26,7 +27,7 @@ use crate::{reader::FileHandleManager, store::DaemonDataStore};
 pub struct Daemon {
     swarm: Swarm<LocalExBehaviour>,
     server: IPCServer,
-    topics: HashMap<GossipTopic, TopicHash>,
+    topics: BiHashMap<TopicHash, GossipTopic>,
     auth_channels: HashMap<PeerId, ResponseChannel<LocalExAuthResponse>>,
     hostname: String,
     ctrlc_rx: broadcast::Receiver<()>,
@@ -55,7 +56,7 @@ impl Daemon {
             server,
             hostname,
             store,
-            topics: HashMap::new(),
+            topics: BiHashMap::new(),
             auth_channels: HashMap::new(),
             files_register_store: HashMap::new(),
             ctrlc_rx: rx,
@@ -111,11 +112,11 @@ impl LocalExProtocol for Daemon {
         self.hostname.clone()
     }
 
-    fn topics_mut(&mut self) -> &mut HashMap<protocol::GossipTopic, TopicHash> {
+    fn topics_mut(&mut self) -> &mut BiHashMap<TopicHash, protocol::GossipTopic> {
         &mut self.topics
     }
 
-    fn topics(&self) -> &HashMap<protocol::GossipTopic, TopicHash> {
+    fn topics(&self) -> &BiHashMap<TopicHash, protocol::GossipTopic> {
         &self.topics
     }
 

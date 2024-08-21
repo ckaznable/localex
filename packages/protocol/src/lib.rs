@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use anyhow::Result;
 use async_trait::async_trait;
+use bimap::BiHashMap;
 use common::{
     auth::{
         AuthResponseState,
@@ -47,13 +48,14 @@ pub trait EventEmitter<T> {
 #[derive(Hash, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum GossipTopic {
     Hostname,
+    Sync,
 }
 
 #[async_trait]
 pub trait LocalExProtocol: Send + LocalExSwarm + FileTransferClientProtocol + EventEmitter<DaemonEvent> {
     fn hostname(&self) -> String;
-    fn topics_mut(&mut self) -> &mut HashMap<GossipTopic, TopicHash>;
-    fn topics(&self) -> &HashMap<GossipTopic, TopicHash>;
+    fn topics_mut(&mut self) -> &mut BiHashMap<TopicHash, GossipTopic>;
+    fn topics(&self) -> &BiHashMap<TopicHash, GossipTopic>;
     fn auth_channels_mut(&mut self) -> &mut HashMap<PeerId, ResponseChannel<LocalExAuthResponse>>;
     fn peers_mut(&mut self) -> &mut BTreeMap<PeerId, DaemonPeer>;
 
@@ -65,7 +67,7 @@ pub trait LocalExProtocol: Send + LocalExSwarm + FileTransferClientProtocol + Ev
 
     fn broadcast_hostname(&mut self) {
         info!("broadcast hostname to peers");
-        let topic = self.topics().get(&GossipTopic::Hostname).unwrap().clone();
+        let topic = self.topics().get_by_right(&GossipTopic::Hostname).unwrap().clone();
         let hostname = self.hostname();
         if let Err(e) = self.swarm_mut().behaviour_mut().gossipsub.publish(topic, hostname) {
             error!("hostname publish error: {e:?}");
@@ -109,7 +111,7 @@ pub trait LocalExProtocol: Send + LocalExSwarm + FileTransferClientProtocol + Ev
         let hostname_topic = gossipsub::IdentTopic::new("hostname-broadcaset");
         swarm.behaviour_mut().gossipsub.subscribe(&hostname_topic)?;
         self.topics_mut()
-            .insert(GossipTopic::Hostname, hostname_topic.hash());
+            .insert(hostname_topic.hash(),GossipTopic::Hostname);
 
         Ok(())
     }
@@ -227,9 +229,17 @@ pub trait LocalExProtocol: Send + LocalExSwarm + FileTransferClientProtocol + Ev
         use gossipsub::Event::*;
         match event {
             Subscribed { topic, peer_id } => {
-                if topic == *self.topics_mut().get(&GossipTopic::Hostname).unwrap() {
-                    info!("{} just subscribed hostname topic", peer_id.to_string());
-                    self.broadcast_hostname();
+                match self.topics().get_by_left(&topic) {
+                    Some(GossipTopic::Hostname) => {
+                        info!("{} just subscribed hostname topic", peer_id);
+                        self.broadcast_hostname();
+                    }
+                    Some(GossipTopic::Sync) => {
+
+                    }
+                    _ => {
+
+                    }
                 }
             }
             Message { message, .. } => {
