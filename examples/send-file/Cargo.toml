@@ -14,3 +14,9 @@ futures = "0.3.21"
 md5 = "0.7.0"
 rand = { version = "0.8.5", features = ["small_rng"] }
 clap = { version = "4.5.16", features = ["derive"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = 'abort'
