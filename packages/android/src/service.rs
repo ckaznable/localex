@@ -1,5 +1,6 @@
 use std::{
-    collections::{BTreeMap, HashMap}, sync::Arc
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
 };
 
 use async_trait::async_trait;
@@ -11,7 +12,17 @@ use libp2p::{
     PeerId, Swarm,
 };
 use network::{new_swarm, LocalExBehaviour};
-use protocol::{file::{FileChunk, FileReaderClient, FileTransferClientProtocol, FilesRegisterCenter, FilesRegisterItem}, AbortListener, EventEmitter, GossipTopic, LocalExProtocol, LocalExSwarm};
+use protocol::{
+    auth::AuthHandler,
+    client::ClientHandler,
+    file::{
+        FileChunk, FileReaderClient, FileTransferClientProtocol, FilesRegisterCenter,
+        FilesRegisterItem,
+    },
+    message::{GossipTopic, GossipTopicManager, GossipsubHandler},
+    AbortListener, EventEmitter, LocalExProtocol, LocalExProtocolAction, LocalExSwarm,
+    LocalexContentProvider, PeersManager,
+};
 use tokio::sync::{mpsc, Mutex};
 
 use crate::{error::FFIError, ffi::FFIDaemonEvent, get_client_event_receiver, get_quit_rx};
@@ -40,7 +51,7 @@ impl ServiceManager {
         let daemon_tx = self.daemon_tx.clone();
         let mut guard = service.lock().await;
 
-        if guard.listen_on().is_err() {
+        if guard.prepare().is_err() {
             let _ = daemon_tx
                 .send(FFIDaemonEvent::Error(FFIError::ListenLibP2PError))
                 .await;
@@ -123,24 +134,13 @@ impl EventEmitter<DaemonEvent> for Service {
     }
 }
 
-#[async_trait]
-impl LocalExProtocol for Service {
+impl LocalexContentProvider for Service {
     fn hostname(&self) -> String {
         self.hostname.clone()
     }
+}
 
-    fn topics_mut(&mut self) -> &mut BiHashMap<TopicHash, protocol::GossipTopic> {
-        &mut self.topics
-    }
-
-    fn topics(&self) -> &BiHashMap<TopicHash, protocol::GossipTopic> {
-        &self.topics
-    }
-
-    fn auth_channels_mut(&mut self) -> &mut HashMap<PeerId, ResponseChannel<LocalExAuthResponse>> {
-        &mut self.auth_channels
-    }
-
+impl PeersManager for Service {
     fn peers_mut(&mut self) -> &mut BTreeMap<PeerId, DaemonPeer> {
         &mut self.peers
     }
@@ -157,8 +157,30 @@ impl LocalExProtocol for Service {
     fn on_remove_peer(&mut self, _: &PeerId) {}
 
     fn on_add_peer(&mut self, _: PeerId) {}
-
 }
+
+impl AuthHandler for Service {
+    fn auth_channels_mut(&mut self) -> &mut HashMap<PeerId, ResponseChannel<LocalExAuthResponse>> {
+        &mut self.auth_channels
+    }
+}
+
+impl GossipTopicManager for Service {
+    fn topics_mut(&mut self) -> &mut BiHashMap<TopicHash, GossipTopic> {
+        &mut self.topics
+    }
+
+    fn topics(&self) -> &BiHashMap<TopicHash, GossipTopic> {
+        &self.topics
+    }
+}
+
+impl GossipsubHandler for Service {}
+impl ClientHandler for Service {}
+impl LocalExProtocolAction for Service {}
+
+#[async_trait]
+impl LocalExProtocol for Service {}
 
 #[async_trait]
 impl FileReaderClient for Service {
@@ -166,14 +188,19 @@ impl FileReaderClient for Service {
         todo!()
     }
 
-    async fn ready(&mut self, session: &str, id: &str, size: usize, chunk_size: usize) -> anyhow::Result<()> {
+    async fn ready(
+        &mut self,
+        session: &str,
+        id: &str,
+        size: usize,
+        chunk_size: usize,
+    ) -> anyhow::Result<()> {
         todo!()
     }
 
     async fn done(&mut self, session: &str, id: &str) -> anyhow::Result<()> {
         todo!()
     }
-
 }
 
 impl AbortListener for Service {
@@ -193,4 +220,4 @@ impl FilesRegisterCenter for Service {
 }
 
 #[async_trait]
-impl FileTransferClientProtocol for Service { }
+impl FileTransferClientProtocol for Service {}

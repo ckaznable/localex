@@ -1,35 +1,26 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use bimap::BiHashMap;
+use auth::AuthHandler;
+use client::ClientHandler;
 use common::{
-    auth::{
-        AuthResponseState,
-        LocalExAuthRequest,
-        LocalExAuthResponse
-    },
-    event::{
-        ClientEvent,
-        DaemonEvent
-    },
-    peer::{
-        DaemonPeer,
-        PeerVerifyState
-    }
+    event::DaemonEvent,
+    peer::{DaemonPeer, PeerVerifyState},
 };
 use file::FileTransferClientProtocol;
 use libp2p::{
-    gossipsub::{self, TopicHash},
     mdns,
-    request_response::{self, ResponseChannel},
     PeerId, Swarm,
 };
+use message::GossipsubHandler;
 use network::{LocalExBehaviour, LocalExBehaviourEvent};
 use tokio::sync::broadcast;
-use tracing::{error, info};
 
+pub mod auth;
+pub mod client;
 pub mod file;
+pub mod message;
 
 pub trait LocalExSwarm {
     fn swarm(&self) -> &Swarm<LocalExBehaviour>;
@@ -45,39 +36,12 @@ pub trait EventEmitter<T> {
     async fn emit_event(&mut self, event: T) -> Result<()>;
 }
 
-#[derive(Hash, Clone, Copy, PartialEq, Eq, Debug)]
-pub enum GossipTopic {
-    Hostname,
-    Sync,
-}
-
-#[async_trait]
-pub trait LocalExProtocol: Send + LocalExSwarm + FileTransferClientProtocol + EventEmitter<DaemonEvent> {
-    fn hostname(&self) -> String;
-    fn topics_mut(&mut self) -> &mut BiHashMap<TopicHash, GossipTopic>;
-    fn topics(&self) -> &BiHashMap<TopicHash, GossipTopic>;
-    fn auth_channels_mut(&mut self) -> &mut HashMap<PeerId, ResponseChannel<LocalExAuthResponse>>;
+pub trait PeersManager: LocalExSwarm {
     fn peers_mut(&mut self) -> &mut BTreeMap<PeerId, DaemonPeer>;
-
     fn get_peers(&mut self) -> Vec<DaemonPeer>;
     fn save_peers(&mut self) -> Result<()>;
-
     fn on_remove_peer(&mut self, _: &PeerId);
     fn on_add_peer(&mut self, _: PeerId);
-
-    fn broadcast_hostname(&mut self) {
-        info!("broadcast hostname to peers");
-        let topic = self.topics().get_by_right(&GossipTopic::Hostname).unwrap().clone();
-        let hostname = self.hostname();
-        if let Err(e) = self.swarm_mut().behaviour_mut().gossipsub.publish(topic, hostname) {
-            error!("hostname publish error: {e:?}");
-        }
-    }
-
-    async fn send_peers(&mut self) {
-        let list = self.get_peers();
-        let _ = self.emit_event(DaemonEvent::PeerList(list)).await;
-    }
 
     fn remove_peer(&mut self, peer_id: &PeerId) {
         self.swarm_mut()
@@ -102,17 +66,43 @@ pub trait LocalExProtocol: Send + LocalExSwarm + FileTransferClientProtocol + Ev
         self.peers_mut().insert(peer_id, DaemonPeer::new(peer_id));
         self.on_add_peer(peer_id);
     }
+}
+
+#[async_trait]
+pub trait LocalExProtocolAction: EventEmitter<DaemonEvent> + PeersManager {
+    async fn send_peers(&mut self) {
+        let list = self.get_peers();
+        let _ = self.emit_event(DaemonEvent::PeerList(list)).await;
+    }
+}
+
+pub trait LocalexContentProvider {
+    fn hostname(&self) -> String;
+}
+
+#[async_trait]
+pub trait LocalExProtocol:
+    Send
+    + LocalExSwarm
+    + FileTransferClientProtocol
+    + EventEmitter<DaemonEvent>
+    + GossipsubHandler
+    + PeersManager
+    + LocalExProtocolAction
+    + LocalexContentProvider
+    + AuthHandler
+    + ClientHandler
+{
+    fn prepare(&mut self) -> Result<()> {
+        self.listen_on()?;
+        self.subscribe_topics()?;
+        Ok(())
+    }
 
     fn listen_on(&mut self) -> Result<()> {
         let swarm = self.swarm_mut();
         swarm.listen_on("/ip4/0.0.0.0/udp/0/quic-v1".parse()?)?;
         swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
-
-        let hostname_topic = gossipsub::IdentTopic::new("hostname-broadcaset");
-        swarm.behaviour_mut().gossipsub.subscribe(&hostname_topic)?;
-        self.topics_mut()
-            .insert(hostname_topic.hash(),GossipTopic::Hostname);
-
         Ok(())
     }
 
@@ -125,82 +115,6 @@ pub trait LocalExProtocol: Send + LocalExSwarm + FileTransferClientProtocol + Ev
             RrFile(event) => self.handle_file_event(event).await,
             RrClientCustom(event) => self.handle_client_cutom_message(event).await,
         }
-    }
-
-    async fn handle_client_cutom_message(
-        &mut self,
-        event: request_response::Event<Vec<u8>, Vec<u8>>,
-    ) -> Result<()> {
-        if let request_response::Event::Message { peer, message: request_response::Message::Request { request, .. } } = event {
-            info!("received custom message from {peer}");
-            self.emit_event(DaemonEvent::ReceivedCustomMessage(peer, request)).await?;
-        }
-
-        Ok(())
-    }
-
-    async fn handle_client_event(&mut self, event: ClientEvent) -> Result<()> {
-        use ClientEvent::*;
-        match event {
-            VerifyConfirm(peer_id, result) => {
-                let mut state = AuthResponseState::Deny;
-                if result {
-                    self.verified(&peer_id);
-                    self.swarm_mut()
-                        .behaviour_mut()
-                        .gossipsub
-                        .add_explicit_peer(&peer_id);
-                    state = AuthResponseState::Accept;
-                }
-
-                if let Some(channel) = self.auth_channels_mut().remove(&peer_id) {
-                    let hostname = self.hostname();
-                    let _ = self
-                        .swarm_mut()
-                        .behaviour_mut()
-                        .rr_auth
-                        .send_response(channel, LocalExAuthResponse { state, hostname });
-                };
-            }
-            DisconnectPeer(peer_id) => {
-                self.remove_peer(&peer_id);
-            }
-            RequestVerify(peer_id) => {
-                info!("send verification request to {}", peer_id);
-                let hostname = self.hostname();
-                self.swarm_mut()
-                    .behaviour_mut()
-                    .rr_auth
-                    .send_request(&peer_id, LocalExAuthRequest { hostname });
-            }
-            RequestLocalInfo => {
-                info!("client request local info");
-                let _ = self.emit_event(DaemonEvent::LocalInfo(
-                    self.hostname(),
-                    *self.swarm().local_peer_id(),
-                ))
-                .await;
-            }
-            RequestPeerList => {
-                info!("client request peer list");
-                self.send_peers().await;
-            }
-            RegistFileId(id, file) => {
-                self.regist(id, file.into());
-            }
-            UnRegistFileId(id) => {
-                self.unregist(&id);
-            }
-            SendFile(peer, id) => {
-                info!("send {id} file to {peer}");
-                self.send_file(&peer, id)?;
-            },
-            SendCustomMessage(peer, data) => {
-                self.swarm_mut().behaviour_mut().rr_client_custom.send_request(&peer, data);
-            },
-        }
-
-        Ok(())
     }
 
     async fn handle_mdns(&mut self, event: mdns::Event) -> Result<()> {
@@ -220,116 +134,6 @@ pub trait LocalExProtocol: Send + LocalExSwarm + FileTransferClientProtocol + Ev
 
                 self.send_peers().await;
             }
-        }
-
-        Ok(())
-    }
-
-    async fn handle_gossipsub(&mut self, event: gossipsub::Event) -> Result<()> {
-        use gossipsub::Event::*;
-        match event {
-            Subscribed { topic, peer_id } => {
-                match self.topics().get_by_left(&topic) {
-                    Some(GossipTopic::Hostname) => {
-                        info!("{} just subscribed hostname topic", peer_id);
-                        self.broadcast_hostname();
-                    }
-                    Some(GossipTopic::Sync) => {
-
-                    }
-                    _ => {
-
-                    }
-                }
-            }
-            Message { message, .. } => {
-                if let Some(peer) = message
-                    .source
-                    .and_then(|peer| self.peers_mut().get_mut(&peer))
-                {
-                    let hostname =
-                        String::from_utf8(message.data).unwrap_or_else(|_| String::from("unknown"));
-                    info!("receive hostname broadcaset {hostname}");
-                    peer.set_hostname(hostname);
-                }
-
-                self.send_peers().await;
-            }
-            GossipsubNotSupported { peer_id } => {
-                info!("{} not support gossipsub", peer_id);
-                self.remove_peer(&peer_id);
-                self.send_peers().await;
-            }
-            Unsubscribed { peer_id, .. } => {
-                info!("{} unsubscribe topic", peer_id);
-            }
-        }
-
-        Ok(())
-    }
-
-    async fn handle_auth(
-        &mut self,
-        event: request_response::Event<LocalExAuthRequest, LocalExAuthResponse>,
-    ) -> Result<()> {
-        use request_response::Event::*;
-        match event {
-            InboundFailure { error, .. } => {
-                error!("rr_auth inbound failure: {error}");
-            }
-            OutboundFailure { error, .. } => {
-                error!("rr_auth outbound failure: {error}");
-            }
-            Message {
-                peer,
-                message:
-                    request_response::Message::Request {
-                        request, channel, ..
-                    },
-            } => {
-                info!(
-                    "{}:{} verfication request incomming",
-                    &request.hostname, peer
-                );
-                self.add_peer(peer);
-                self.auth_channels_mut().insert(peer, channel);
-
-                let peer = {
-                    let peer = self.peers_mut().get_mut(&peer).unwrap();
-                    peer.set_hostname(request.hostname);
-                    peer.clone()
-                };
-
-                let _ = self.emit_event(DaemonEvent::InComingVerify(peer)).await;
-                self.send_peers().await;
-            }
-            Message {
-                peer,
-                message: request_response::Message::Response { response, .. },
-            } => {
-                let result = response.state == AuthResponseState::Accept;
-                info!(
-                    "{}:{} verify result is {}",
-                    &response.hostname, peer, result
-                );
-
-                if result {
-                    self.verified(&peer);
-                    self.swarm_mut()
-                        .behaviour_mut()
-                        .gossipsub
-                        .add_explicit_peer(&peer);
-                }
-
-                self.peers_mut()
-                    .get_mut(&peer)
-                    .map(|p| p.set_hostname(response.hostname));
-                let _ = self.save_peers();
-
-                let _ = self.emit_event(DaemonEvent::VerifyResult(peer, result)).await;
-                self.send_peers().await;
-            }
-            _ => {}
         }
 
         Ok(())

@@ -9,15 +9,21 @@ use bimap::BiHashMap;
 use common::{auth::LocalExAuthResponse, event::DaemonEvent, peer::DaemonPeer};
 use futures::StreamExt;
 use libp2p::{
-    gossipsub::TopicHash, identity::Keypair, request_response::ResponseChannel, swarm::SwarmEvent, PeerId, Swarm
+    gossipsub::TopicHash, identity::Keypair, request_response::ResponseChannel, swarm::SwarmEvent,
+    PeerId, Swarm,
 };
 use localex_ipc::IPCServer;
 use network::LocalExBehaviour;
 use protocol::{
+    auth::AuthHandler,
+    client::ClientHandler,
     file::{
         FileChunk, FileReaderClient, FileTransferClientProtocol, FilesRegisterCenter,
         FilesRegisterItem,
-    }, AbortListener, EventEmitter, GossipTopic, LocalExProtocol, LocalExSwarm
+    },
+    message::{GossipTopic, GossipTopicManager, GossipsubHandler},
+    AbortListener, EventEmitter, LocalExProtocol, LocalExProtocolAction, LocalExSwarm,
+    LocalexContentProvider, PeersManager,
 };
 use tokio::sync::broadcast;
 use tracing::{error, info};
@@ -106,24 +112,13 @@ impl EventEmitter<DaemonEvent> for Daemon {
     }
 }
 
-#[async_trait]
-impl LocalExProtocol for Daemon {
+impl LocalexContentProvider for Daemon {
     fn hostname(&self) -> String {
         self.hostname.clone()
     }
+}
 
-    fn topics_mut(&mut self) -> &mut BiHashMap<TopicHash, protocol::GossipTopic> {
-        &mut self.topics
-    }
-
-    fn topics(&self) -> &BiHashMap<TopicHash, protocol::GossipTopic> {
-        &self.topics
-    }
-
-    fn auth_channels_mut(&mut self) -> &mut HashMap<PeerId, ResponseChannel<LocalExAuthResponse>> {
-        &mut self.auth_channels
-    }
-
+impl PeersManager for Daemon {
     fn peers_mut(&mut self) -> &mut BTreeMap<PeerId, DaemonPeer> {
         self.store.get_peers_mut()
     }
@@ -139,8 +134,48 @@ impl LocalExProtocol for Daemon {
     fn on_remove_peer(&mut self, _: &PeerId) {}
 
     fn on_add_peer(&mut self, _: PeerId) {}
-
 }
+
+impl AuthHandler for Daemon {
+    fn auth_channels_mut(&mut self) -> &mut HashMap<PeerId, ResponseChannel<LocalExAuthResponse>> {
+        &mut self.auth_channels
+    }
+}
+
+impl GossipTopicManager for Daemon {
+    fn topics_mut(&mut self) -> &mut BiHashMap<TopicHash, GossipTopic> {
+        &mut self.topics
+    }
+
+    fn topics(&self) -> &BiHashMap<TopicHash, GossipTopic> {
+        &self.topics
+    }
+}
+
+impl AbortListener for Daemon {
+    fn abort_rx(&self) -> broadcast::Receiver<()> {
+        self.ctrlc_rx.resubscribe()
+    }
+}
+
+impl FilesRegisterCenter for Daemon {
+    fn store(&self) -> &HashMap<String, FilesRegisterItem> {
+        &self.files_register_store
+    }
+
+    fn store_mut(&mut self) -> &mut HashMap<String, FilesRegisterItem> {
+        &mut self.files_register_store
+    }
+}
+
+impl GossipsubHandler for Daemon {}
+impl ClientHandler for Daemon {}
+impl LocalExProtocolAction for Daemon {}
+
+#[async_trait]
+impl FileTransferClientProtocol for Daemon {}
+#[async_trait]
+impl LocalExProtocol for Daemon {}
 
 #[async_trait]
 impl FileReaderClient for Daemon {
@@ -180,26 +215,11 @@ impl FileReaderClient for Daemon {
         let tmp_file_path = handler.get_file_path()?;
 
         self.file_reader_manager.remove(session, id);
-        self.emit_event(DaemonEvent::FileUpdated(id.to_string(), tmp_file_path.to_string_lossy().to_string())).await?;
+        self.emit_event(DaemonEvent::FileUpdated(
+            id.to_string(),
+            tmp_file_path.to_string_lossy().to_string(),
+        ))
+        .await?;
         Ok(())
     }
 }
-
-impl AbortListener for Daemon {
-    fn abort_rx(&self) -> broadcast::Receiver<()> {
-        self.ctrlc_rx.resubscribe()
-    }
-}
-
-impl FilesRegisterCenter for Daemon {
-    fn store(&self) -> &HashMap<String, FilesRegisterItem> {
-        &self.files_register_store
-    }
-
-    fn store_mut(&mut self) -> &mut HashMap<String, FilesRegisterItem> {
-        &mut self.files_register_store
-    }
-}
-
-#[async_trait]
-impl FileTransferClientProtocol for Daemon {}

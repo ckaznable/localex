@@ -40,7 +40,7 @@ pub async fn main(param: config::Config) -> Result<()> {
         .unwrap_or_else(|_| String::from("unknown"));
 
     let mut deamon = Daemon::new(local_keypair, _hostname, param.sock, store)?;
-    deamon.listen_on()?;
+    deamon.prepare()?;
     deamon.run().await?;
 
     Ok(())
