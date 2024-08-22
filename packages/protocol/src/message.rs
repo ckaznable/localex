@@ -67,6 +67,10 @@ pub trait GossipsubHandler:
         }
     }
 
+    fn broadcast_sync_offer(&mut self) {
+        todo!()
+    }
+
     fn subscribe_topics(&mut self) -> Result<()> {
         use GossipTopic::*;
         self.subscribe(Hostname)?;
@@ -89,14 +93,11 @@ pub trait GossipsubHandler:
     async fn handle_gossipsub(&mut self, event: gossipsub::Event) -> Result<()> {
         use gossipsub::Event::*;
         match event {
-            Subscribed { topic, peer_id } => match self.topics().get_by_left(&topic) {
-                Some(GossipTopic::Hostname) => {
+            Subscribed { topic, peer_id } => {
+                if let Some(GossipTopic::Hostname) = self.topics().get_by_left(&topic) {
                     info!("{} just subscribed hostname topic", peer_id);
                     self.broadcast_hostname();
                 }
-                Some(GossipTopic::Sync) => {}
-                Some(GossipTopic::SyncOffer) => {}
-                _ => {}
             },
             Message { message, .. } => {
                 let gossipsub::Message {
@@ -123,8 +124,12 @@ pub trait GossipsubHandler:
                             self.send_peers().await;
                         };
                     }
-                    GossipTopic::Sync => {}
-                    GossipTopic::SyncOffer => {}
+                    GossipTopic::Sync => {
+                        self.broadcast_sync_offer();
+                    }
+                    GossipTopic::SyncOffer => {
+                        todo!()
+                    }
                 }
             }
             GossipsubNotSupported { peer_id } => {
