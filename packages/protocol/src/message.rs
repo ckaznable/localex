@@ -6,7 +6,7 @@ use bimap::BiHashMap;
 use libp2p::gossipsub::{self, TopicHash};
 use tracing::{error, info};
 
-use crate::{LocalExProtocolAction, LocalExSwarm, LocalexContentProvider, PeersManager};
+use crate::{LocalExProtocolAction, LocalExSwarm, LocalExContentProvider, PeersManager};
 
 #[derive(Hash, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum GossipTopic {
@@ -40,7 +40,7 @@ pub trait GossipTopicManager {
 
 #[async_trait]
 pub trait GossipsubHandler:
-    LocalExSwarm + GossipTopicManager + PeersManager + LocalExProtocolAction + LocalexContentProvider
+    LocalExSwarm + GossipTopicManager + PeersManager + LocalExProtocolAction + LocalExContentProvider
 {
     fn broadcast<T: Into<Vec<u8>>>(&mut self, topic: GossipTopic, data: T) -> Result<()> {
         let topic = {

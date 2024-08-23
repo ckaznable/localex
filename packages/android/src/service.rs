@@ -21,7 +21,7 @@ use protocol::{
     },
     message::{GossipTopic, GossipTopicManager, GossipsubHandler},
     AbortListener, EventEmitter, LocalExProtocol, LocalExProtocolAction, LocalExSwarm,
-    LocalexContentProvider, PeersManager,
+    LocalExContentProvider, PeersManager,
 };
 use tokio::sync::{mpsc, Mutex};
 
@@ -134,7 +134,7 @@ impl EventEmitter<DaemonEvent> for Service {
     }
 }
 
-impl LocalexContentProvider for Service {
+impl LocalExContentProvider for Service {
     fn hostname(&self) -> String {
         self.hostname.clone()
     }

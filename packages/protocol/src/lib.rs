@@ -76,7 +76,7 @@ pub trait LocalExProtocolAction: EventEmitter<DaemonEvent> + PeersManager {
     }
 }
 
-pub trait LocalexContentProvider {
+pub trait LocalExContentProvider {
     fn hostname(&self) -> String;
 }
 
@@ -89,7 +89,7 @@ pub trait LocalExProtocol:
     + GossipsubHandler
     + PeersManager
     + LocalExProtocolAction
-    + LocalexContentProvider
+    + LocalExContentProvider
     + AuthHandler
     + ClientHandler
 {

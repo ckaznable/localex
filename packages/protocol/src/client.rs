@@ -8,7 +8,7 @@ use libp2p::request_response;
 use tracing::info;
 
 use crate::{
-    auth::AuthHandler, file::{FileTransferClientProtocol, FilesRegisterCenter}, EventEmitter, LocalExProtocolAction, LocalExSwarm, LocalexContentProvider, PeersManager
+    auth::AuthHandler, file::{FileTransferClientProtocol, FilesRegisterCenter}, EventEmitter, LocalExProtocolAction, LocalExSwarm, LocalExContentProvider, PeersManager
 };
 
 #[async_trait]
@@ -16,7 +16,7 @@ pub trait ClientHandler:
     LocalExSwarm
     + EventEmitter<DaemonEvent>
     + PeersManager
-    + LocalexContentProvider
+    + LocalExContentProvider
     + AuthHandler
     + LocalExProtocolAction
     + FilesRegisterCenter

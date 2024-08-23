@@ -23,7 +23,7 @@ use protocol::{
     },
     message::{GossipTopic, GossipTopicManager, GossipsubHandler},
     AbortListener, EventEmitter, LocalExProtocol, LocalExProtocolAction, LocalExSwarm,
-    LocalexContentProvider, PeersManager,
+    LocalExContentProvider, PeersManager,
 };
 use tokio::sync::broadcast;
 use tracing::{error, info};
@@ -112,7 +112,7 @@ impl EventEmitter<DaemonEvent> for Daemon {
     }
 }
 
-impl LocalexContentProvider for Daemon {
+impl LocalExContentProvider for Daemon {
     fn hostname(&self) -> String {
         self.hostname.clone()
     }
