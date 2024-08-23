@@ -1,6 +1,9 @@
 [workspace]
 resolver = "2"
 members = [
+  "database",
+  "database/entity",
+  "database/migration",
   "packages/android",
   "packages/common",
   "packages/localex",
