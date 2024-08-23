@@ -12,6 +12,7 @@ impl MigrationTrait for Migration {
                     .table(RegistFile::Table)
                     .if_not_exists()
                     .col(pk_auto(RegistFile::Id))
+                    .col(string(RegistFile::FileId))
                     .col(string(RegistFile::AppId))
                     .col(string(RegistFile::Path))
                     .col(integer(RegistFile::Version))
@@ -31,6 +32,7 @@ impl MigrationTrait for Migration {
 enum RegistFile {
     Table,
     Id,
+    FileId,
     AppId,
     Path,
     Version,
