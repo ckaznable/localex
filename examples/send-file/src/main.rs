@@ -60,7 +60,7 @@ async fn main() -> Result<()> {
 struct AppState {
     md5_checksum: Option<String>,
     remote_md5_checksum: Option<String>,
-    raw: Vec<u8>,
+    raw: Option<Vec<u8>>,
     list: Vec<DaemonPeer>,
     list_state: ListState,
 }
@@ -91,12 +91,15 @@ impl App {
 
         self.gen_test_raw_data();
         self.client.send(ClientEvent::RequestPeerList).await;
-        self.client
-            .send(ClientEvent::RegistFileId(
-                FILE_ID.to_string(),
-                ClientFileId::Raw(self.state.raw.clone()),
-            ))
-            .await;
+
+        if let Some(raw) = self.state.raw.take() {
+            self.client
+                .send(ClientEvent::RegistFileId(
+                    FILE_ID.to_string(),
+                    ClientFileId::Raw(raw),
+                ))
+                .await;
+        }
 
         loop {
             self.terminal.draw(|f| Self::ui(f, &mut self.state))?;
@@ -126,7 +129,7 @@ impl App {
         let f = rng.next_u32() as u8;
         let raw = vec![f; 1024 * 1024 * 10];
         self.state.md5_checksum = Some(format!("{:x}", md5::compute(&raw)));
-        self.state.raw = raw;
+        self.state.raw = Some(raw);
     }
 
     async fn handle_deamon(&mut self, event: DaemonEvent) -> Result<()> {
