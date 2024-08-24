@@ -5,7 +5,9 @@ use sea_orm::entity::prelude::*;
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
 #[sea_orm(table_name = "regist_file")]
 pub struct Model {
-    pub id: String,
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub file_id: String,
     pub app_id: String,
     pub path: String,
     pub version: i32,
