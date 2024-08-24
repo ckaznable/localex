@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 migration = { path = "./migration/" }
+entity = { path = "./entity/" }
 tokio = { version = "1.39.3", features = ["full"] }
 sea-orm = { version = "1.0.0-rc.5", features = ["sqlx-sqlite", "runtime-tokio-rustls", "macros"] }
 anyhow = "1.0.86"
