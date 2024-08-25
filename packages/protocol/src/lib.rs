@@ -22,6 +22,9 @@ pub mod client;
 pub mod file;
 pub mod message;
 
+pub use libp2p;
+pub use database;
+
 pub trait LocalExSwarm {
     fn swarm(&self) -> &Swarm<LocalExBehaviour>;
     fn swarm_mut(&mut self) -> &mut Swarm<LocalExBehaviour>;

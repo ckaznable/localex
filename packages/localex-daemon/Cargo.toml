@@ -9,7 +9,6 @@ network = { path = "../network/" }
 common = { path = "../common/" }
 localex-ipc = { path = "../localex-ipc/" }
 logger = { path = "../logger/" }
-libp2p = { version = "0.54.0", features = ["tcp", "tokio", "noise", "yamux", "macros", "gossipsub", "mdns", "request-response", "cbor", "quic", "tls"] }
 futures = "0.3.21"
 tokio = { version = "1", features = ["full"] }
 anyhow = "1.0.86"

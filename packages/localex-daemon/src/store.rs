@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 use anyhow::Result;
 use ciborium::{from_reader, into_writer};
 use futures::executor::block_on;
-use libp2p::{identity::Keypair, PeerId};
+use protocol::libp2p::{identity::Keypair, PeerId};
 use common::peer::DaemonPeer;
 use secret_service::{EncryptionType, SecretService};
 

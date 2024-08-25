@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use libp2p::identity::Keypair;
+use protocol::libp2p::identity::Keypair;
 use tokio::sync::{broadcast, mpsc, Mutex};
 
 use crate::{error::FFIError, ffi::{FFIClientEvent, FFIDaemonEvent}, service::ServiceManager};

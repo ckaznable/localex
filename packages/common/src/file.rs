@@ -35,7 +35,8 @@ pub enum FileResponsePayload {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LocalExFilePacket<T> {
-    pub id: String,
+    pub app_id: String,
+    pub file_id: String,
     pub session: String,
     pub payload: T,
 }

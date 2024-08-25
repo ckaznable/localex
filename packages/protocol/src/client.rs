@@ -83,15 +83,21 @@ pub trait ClientHandler:
                 info!("client request peer list");
                 self.send_peers().await;
             }
-            RegistFileId(id, file) => {
-                self.regist(id, file.into());
+            RegistRaw(id, data) => {
+                self.regist_raw(id, data);
             }
-            UnRegistFileId(id) => {
-                self.unregist(&id);
+            RegistFileId(app_id, file_id, path) => {
+                self.regist_path(&app_id, &file_id, &path)?; 
             }
-            SendFile(peer, id) => {
-                info!("send {id} file to {peer}");
-                self.send_file(&peer, id)?;
+            UnRegistFileId(app_id, file_id) => {
+                self.unregist_file(&app_id, &file_id)?;
+            }
+            UnRegistAppId(app_id) => {
+                self.unregist_app(&app_id)?;
+            }
+            SendFile(peer, app_id, file_id) => {
+                info!("send {app_id}:{file_id} file to {peer}");
+                self.send_file(&peer, app_id, file_id).await?;
             }
             SendCustomMessage(peer, data) => {
                 self.swarm_mut()

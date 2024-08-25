@@ -11,7 +11,6 @@ logger = { path = "../logger/" }
 anyhow = "1.0.86"
 futures = "0.3.21"
 tokio = { version = "1", features = ["full"] }
-libp2p = { version = "0.54.0", features = ["tcp", "tokio", "noise", "yamux", "macros", "gossipsub", "mdns", "request-response", "cbor", "quic", "tls"] }
 uniffi = { version = "0.28.0", features = ["tokio"] }
 thiserror = "1.0.63"
 async-trait = "0.1.81"

@@ -3,10 +3,11 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use anyhow::{anyhow, Result};
 use async_compression::tokio::write::{ZstdDecoder, ZstdEncoder};
 use async_trait::async_trait;
-use common::{event::ClientFileId, file::{
+use common::file::{
     ChunkResult, FileRequestPayload, FileResponsePayload, LocalExFileRequest, LocalExFileResponse,
-}};
-use futures::future::join_all;
+};
+use database::LocalExDb;
+use futures::{executor::block_on, future::join_all};
 use libp2p::{
     bytes::Bytes, request_response::{self, ResponseChannel}, PeerId
 };
@@ -41,26 +42,31 @@ async fn decompress_chunk(chunk: &[u8]) -> Result<Vec<u8>> {
     Ok(decoder.into_inner())
 }
 
+pub trait RegistFileDatabase {
+    fn db(&self) -> &LocalExDb;
+}
+
 #[async_trait]
 pub trait FileReaderClient {
-    async fn done(&mut self, session: &str, id: &str) -> Result<()>;
-    async fn read(&mut self, session: &str, id: &str, chunk: FileChunk) -> Result<()>;
+    async fn done(&mut self, session: &str, app_id: &str, file_id: &str) -> Result<()>;
+    async fn read(&mut self, session: &str, app_id: &str, file_id: &str, chunk: FileChunk) -> Result<()>;
     async fn ready(
         &mut self,
         session: &str,
-        id: &str,
+        app_id: &str,
+        file_id: &str,
         size: usize,
         chunk_size: usize,
     ) -> Result<()>;
 }
 
 #[derive(Clone)]
-pub enum FilesRegisterItem {
+pub enum ReadableItem {
     FilePath(PathBuf),
     Raw(Bytes),
 }
 
-impl FilesRegisterItem {
+impl ReadableItem {
     async fn chunk_and_compress(
         &mut self,
         tx: mpsc::Sender<(usize, Vec<u8>)>,
@@ -70,7 +76,7 @@ impl FilesRegisterItem {
         let mut compress_tasks = Vec::new();
         let mut i = 0usize;
 
-        use FilesRegisterItem::*;
+        use ReadableItem::*;
         let mut input: Box<dyn AsyncRead + Unpin + Send> = match self {
             FilePath(path) => Box::new(File::open(path).await?),
             Raw(raw) => Box::new(&raw[..]),
@@ -112,25 +118,49 @@ impl FilesRegisterItem {
     }
 }
 
-impl From<ClientFileId> for FilesRegisterItem {
-    fn from(value: ClientFileId) -> Self {
-        match value {
-            ClientFileId::Path(p) => Self::FilePath(PathBuf::from(p)),
-            ClientFileId::Raw(r) => Self::Raw(Bytes::from(r)),
-        }
-    }
-}
+pub trait FilesRegisterCenter: RegistFileDatabase {
+    fn raw_store(&self) -> &HashMap<String, Bytes>;
+    fn raw_store_mut(&mut self) -> &mut HashMap<String, Bytes>;
 
-pub trait FilesRegisterCenter {
-    fn store(&self) -> &HashMap<String, FilesRegisterItem>;
-    fn store_mut(&mut self) -> &mut HashMap<String, FilesRegisterItem>;
-
-    fn regist(&mut self, id: String, item: FilesRegisterItem) {
-        self.store_mut().insert(id, item);
+    fn regist_path(&self, app_id: &str, file_id: &str, path: &str) -> Result<()> {
+        block_on(async {
+            self.db().regist_file(app_id, file_id, path).await
+        })
     }
 
-    fn unregist(&mut self, id: &str) {
-        self.store_mut().remove(id);
+    fn regist_raw(&mut self, id: String, item: Vec<u8>) {
+        self.raw_store_mut().insert(id, Bytes::from(item));
+    }
+
+    fn unregist_file(&self, app_id: &str, file_id: &str) -> Result<()> {
+        block_on(async {
+            self.db().unregist_file(app_id, file_id).await
+        })
+    }
+
+    fn unregist_app(&self, app_id: &str) -> Result<()> {
+        block_on(async {
+            self.db().unregist_app(app_id).await
+        })
+    }
+
+    fn unregist_raw(&mut self, id: &str) {
+        self.raw_store_mut().remove(id);
+    }
+
+    fn get_regist_item<'a>(&self, app_id: &'a str, file_id: &'a str) -> Option<ReadableItem> {
+        self
+            .raw_store()
+            .get(file_id)
+            .cloned()
+            .map(ReadableItem::Raw)
+            .or_else(|| block_on(async {
+                self.db()
+                    .get_file_path(app_id, file_id)
+                    .await
+                    .map(PathBuf::from)
+                    .map(ReadableItem::FilePath)
+            }))
     }
 }
 
@@ -139,7 +169,8 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
     fn send_file_rr_response(
         &mut self,
         session: String,
-        id: String,
+        app_id: String,
+        file_id: String,
         channel: ResponseChannel<LocalExFileResponse>,
         payload: FileResponsePayload,
     ) -> Result<()> {
@@ -147,7 +178,7 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
             .swarm_mut()
             .behaviour_mut()
             .rr_file
-            .send_response(channel, LocalExFileResponse { session, id, payload })
+            .send_response(channel, LocalExFileResponse { session, app_id, file_id, payload })
             .is_err()
         {
             Err(anyhow!("send file response error"))
@@ -160,13 +191,14 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
         &mut self,
         peer: &PeerId,
         session: String,
-        id: String,
+        app_id: String,
+        file_id: String,
         payload: FileRequestPayload,
     ) {
         self.swarm_mut()
             .behaviour_mut()
             .rr_file
-            .send_request(peer, LocalExFileRequest { session, id, payload });
+            .send_request(peer, LocalExFileRequest { session, app_id, file_id, payload });
     }
 
     async fn handle_file_event(
@@ -201,9 +233,10 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
     async fn do_send_file(
         &mut self,
         session: String,
-        id: String,
+        app_id: String,
+        file_id: String,
         peer: PeerId,
-        input: FilesRegisterItem,
+        input: ReadableItem,
     ) -> Result<()> {
         let (tx, mut rx) = mpsc::channel(MAX_CONCURRENT_CONNECTIONS);
 
@@ -229,18 +262,19 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
                 }
             }
 
-            self.send_chunk(session.clone(), id.clone(), &peer, CHUNK_SIZE * index, data);
+            self.send_chunk(session.clone(), app_id.clone(), file_id.clone(), &peer, CHUNK_SIZE * index, data);
         }
 
         handle.await?;
-        self.send_file_rr_request(&peer, session, id, FileRequestPayload::Done);
+        self.send_file_rr_request(&peer, session, app_id, file_id, FileRequestPayload::Done);
         Ok(())
     }
 
     fn send_chunk(
         &mut self,
         session: String,
-        id: String,
+        app_id: String,
+        file_id: String,
         peer: &PeerId,
         offset: usize,
         data: Vec<u8>,
@@ -248,22 +282,25 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
         self.send_file_rr_request(
             peer,
             session,
-            id,
+            app_id,
+            file_id,
             FileRequestPayload::Chunk { offset, data },
         );
     }
 
-    fn send_file(&mut self, peer: &PeerId, id: String) -> Result<()> {
-        let item = self.store().get(&id).ok_or_else(|| anyhow!("can't not get item"))?;
+    async fn send_file(&mut self, peer: &PeerId, app_id: String, file_id: String) -> Result<()> {
+        let item = self
+            .get_regist_item(&app_id, &file_id)
+            .ok_or_else(|| anyhow!("regist item not found"))?;
         let payload: FileRequestPayload = match item {
-            FilesRegisterItem::FilePath(path) => {
+            ReadableItem::FilePath(path) => {
                 let metadata = std::fs::metadata(path)?;
                 FileRequestPayload::Ready {
                     size: metadata.len() as usize,
                     chunk_size: CHUNK_SIZE,
                 }
             },
-            FilesRegisterItem::Raw(body) => {
+            ReadableItem::Raw(body) => {
                 FileRequestPayload::Ready {
                     size: body.len(),
                     chunk_size: CHUNK_SIZE,
@@ -272,7 +309,7 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
         };
 
         let session = uuid::Uuid::new_v4().to_string();
-        self.send_file_rr_request(peer, session, id, payload);
+        self.send_file_rr_request(peer, session, app_id, file_id , payload);
         Ok(())
     }
 
@@ -281,13 +318,13 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
         channel: ResponseChannel<LocalExFileResponse>,
         request: LocalExFileRequest,
     ) -> Result<()> {
-        let LocalExFileRequest { session, id, payload } = request;
+        let LocalExFileRequest { session, app_id, file_id, payload } = request;
 
         use FileRequestPayload::*;
         match payload {
             Done => {
-                info!("session: {session} id: {id} transfer file done");
-                self.done(&session, &id).await?;
+                info!("session: {session} id: {app_id}:{file_id} transfer file done");
+                self.done(&session, &app_id, &file_id).await?;
             }
             Chunk {
                 data,
@@ -295,7 +332,7 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
             } => {
                 let chunk = decompress_chunk(&data).await?;
                 let chunk = FileChunk { chunk, offset };
-                let result = match self.read(&session, &id, chunk).await {
+                let result = match self.read(&session, &app_id, &file_id, chunk).await {
                     Ok(_) => ChunkResult::Success,
                     Err(e) => {
                         error!("{e:?}");
@@ -305,7 +342,8 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
 
                 self.send_file_rr_response(
                     session,
-                    id,
+                    app_id,
+                    file_id,
                     channel,
                     FileResponsePayload::Checked { result, offset },
                 )?;
@@ -315,8 +353,8 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
                 chunk_size,
             } => {
                 info!("file is ready, size: {size}, chunk size: {chunk_size}");
-                self.ready(&session, &id, size, chunk_size).await?;
-                self.send_file_rr_response(session, id, channel, FileResponsePayload::Ready)?;
+                self.ready(&session, &app_id, &file_id, size, chunk_size).await?;
+                self.send_file_rr_response(session, app_id, file_id, channel, FileResponsePayload::Ready)?;
             }
         };
 
@@ -328,13 +366,13 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
         peer: PeerId,
         response: LocalExFileResponse,
     ) -> Result<()> {
-        let LocalExFileResponse { session, id, payload } = response;
+        let LocalExFileResponse { session, app_id, file_id, payload } = response;
 
         use FileResponsePayload::*;
         match payload {
             Ready | RequestFile => {
-                if let Some(item) = self.store().get(&id) {
-                    self.do_send_file(session, id, peer, item.clone()).await?;
+                if let Some(item) = self.get_regist_item(&app_id, &file_id) {
+                    self.do_send_file(session, app_id, file_id, peer, item.clone()).await?;
                 }
             }
             RequestChunk { .. } => {

@@ -7,21 +7,24 @@ use async_trait::async_trait;
 use bimap::BiHashMap;
 use common::{auth::LocalExAuthResponse, event::DaemonEvent, peer::DaemonPeer};
 use futures::StreamExt;
-use libp2p::{
-    gossipsub::TopicHash, identity::Keypair, request_response::ResponseChannel, swarm::SwarmEvent,
-    PeerId, Swarm,
-};
 use network::{new_swarm, LocalExBehaviour};
 use protocol::{
     auth::AuthHandler,
     client::ClientHandler,
     file::{
         FileChunk, FileReaderClient, FileTransferClientProtocol, FilesRegisterCenter,
-        FilesRegisterItem,
+        RegistFileDatabase,
     },
     message::{GossipTopic, GossipTopicManager, GossipsubHandler},
-    AbortListener, EventEmitter, LocalExProtocol, LocalExProtocolAction, LocalExSwarm,
-    LocalExContentProvider, PeersManager,
+    AbortListener, EventEmitter, LocalExContentProvider, LocalExProtocol, LocalExProtocolAction,
+    LocalExSwarm, PeersManager,
+};
+use protocol::{
+    database::LocalExDb,
+    libp2p::{
+        bytes::Bytes, gossipsub::TopicHash, identity::Keypair, request_response::ResponseChannel,
+        swarm::SwarmEvent, PeerId, Swarm,
+    },
 };
 use tokio::sync::{mpsc, Mutex};
 
@@ -69,7 +72,7 @@ pub struct Service {
     hostname: String,
     peers: BTreeMap<PeerId, DaemonPeer>,
     daemon_tx: mpsc::Sender<FFIDaemonEvent>,
-    files_register_store: HashMap<String, FilesRegisterItem>,
+    files_register_store: HashMap<String, Bytes>,
 }
 
 impl Service {
@@ -179,26 +182,39 @@ impl GossipsubHandler for Service {}
 impl ClientHandler for Service {}
 impl LocalExProtocolAction for Service {}
 
+impl RegistFileDatabase for Service {
+    fn db(&self) -> &LocalExDb {
+        todo!()
+    }
+}
+
 #[async_trait]
 impl LocalExProtocol for Service {}
 
 #[async_trait]
 impl FileReaderClient for Service {
-    async fn read(&mut self, session: &str, id: &str, chunk: FileChunk) -> anyhow::Result<()> {
+    async fn read(
+        &mut self,
+        session: &str,
+        app_id: &str,
+        file_id: &str,
+        chunk: FileChunk,
+    ) -> anyhow::Result<()> {
         todo!()
     }
 
     async fn ready(
         &mut self,
         session: &str,
-        id: &str,
+        app_id: &str,
+        file_id: &str,
         size: usize,
         chunk_size: usize,
     ) -> anyhow::Result<()> {
         todo!()
     }
 
-    async fn done(&mut self, session: &str, id: &str) -> anyhow::Result<()> {
+    async fn done(&mut self, session: &str, app_id: &str, file_id: &str) -> anyhow::Result<()> {
         todo!()
     }
 }
@@ -210,11 +226,11 @@ impl AbortListener for Service {
 }
 
 impl FilesRegisterCenter for Service {
-    fn store(&self) -> &HashMap<String, protocol::file::FilesRegisterItem> {
+    fn raw_store(&self) -> &HashMap<String, Bytes> {
         &self.files_register_store
     }
 
-    fn store_mut(&mut self) -> &mut HashMap<String, protocol::file::FilesRegisterItem> {
+    fn raw_store_mut(&mut self) -> &mut HashMap<String, Bytes> {
         &mut self.files_register_store
     }
 }

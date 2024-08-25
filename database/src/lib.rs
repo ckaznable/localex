@@ -81,6 +81,15 @@ impl LocalExDb {
         Ok(())
     }
 
+    pub async fn unregist_app(&self, app_id: &str) -> Result<()> {
+        RegistFile::delete_many()
+            .filter(regist_file::Column::AppId.eq(app_id))
+            .exec(&self.db)
+            .await?;
+
+        Ok(())
+    }
+
     pub async fn update_version(&self, app_id: &str, file_id: &str, version: i32) -> Result<()> {
         let pear = regist_file::ActiveModel {
             app_id: Set(app_id.to_owned()),

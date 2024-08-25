@@ -3,13 +3,15 @@ use std::{collections::HashMap, io::SeekFrom, path::PathBuf, sync::Arc};
 
 use tokio::{fs::File, io::{AsyncSeekExt, AsyncWriteExt}, sync::RwLock};
 
+type FileId = (String, String);
+
 #[derive(Default)]
 pub struct FileHandleManager {
-    map: HashMap<String, HashMap<String, Arc<RwLock<FileHandler>>>>,
+    map: HashMap<String, HashMap<FileId, Arc<RwLock<FileHandler>>>>,
 }
 
 impl FileHandleManager {
-    pub async fn add(&mut self, session: String, id: String, size: usize, chunk_size: usize) -> Result<()> {
+    pub async fn add(&mut self, session: String, id: FileId, size: usize, chunk_size: usize) -> Result<()> {
         let handler = FileHandler::new(size, chunk_size).await?;
         let handler = Arc::new(RwLock::new(handler));
 
@@ -27,11 +29,11 @@ impl FileHandleManager {
         Ok(())
     }
 
-    pub fn get(&self, session: &str, id: &str) -> Option<Arc<RwLock<FileHandler>>> {
+    pub fn get(&self, session: &str, id: &FileId) -> Option<Arc<RwLock<FileHandler>>> {
         self.map.get(session).and_then(|ids| ids.get(id)).cloned()
     }
 
-    pub fn remove(&mut self, session: &str, id: &str) {
+    pub fn remove(&mut self, session: &str, id: &FileId) {
         if !self.map.contains_key(session) {
             return;
         }

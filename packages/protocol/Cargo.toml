@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+database = { path = "../../database/" }
 common = { path = "../common/" }
 network = { path = "../network/" }
 libp2p = { version = "0.54.0", features = ["tcp", "tokio", "noise", "yamux", "macros", "gossipsub", "mdns", "request-response", "cbor", "quic", "tls"] }

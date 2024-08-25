@@ -2,7 +2,7 @@ uniffi::setup_scaffolding!();
 
 use error::FFIError;
 use ffi::{FFIClientEvent, FFIDaemonEvent};
-use libp2p::identity::Keypair;
+use protocol::libp2p::identity::Keypair;
 use common::event::ClientEvent;
 use global::*;
 

@@ -8,10 +8,6 @@ use async_trait::async_trait;
 use bimap::BiHashMap;
 use common::{auth::LocalExAuthResponse, event::DaemonEvent, peer::DaemonPeer};
 use futures::StreamExt;
-use libp2p::{
-    gossipsub::TopicHash, identity::Keypair, request_response::ResponseChannel, swarm::SwarmEvent,
-    PeerId, Swarm,
-};
 use localex_ipc::IPCServer;
 use network::LocalExBehaviour;
 use protocol::{
@@ -19,11 +15,18 @@ use protocol::{
     client::ClientHandler,
     file::{
         FileChunk, FileReaderClient, FileTransferClientProtocol, FilesRegisterCenter,
-        FilesRegisterItem,
+        RegistFileDatabase,
     },
     message::{GossipTopic, GossipTopicManager, GossipsubHandler},
-    AbortListener, EventEmitter, LocalExProtocol, LocalExProtocolAction, LocalExSwarm,
-    LocalExContentProvider, PeersManager,
+    AbortListener, EventEmitter, LocalExContentProvider, LocalExProtocol, LocalExProtocolAction,
+    LocalExSwarm, PeersManager,
+};
+use protocol::{
+    database::LocalExDb,
+    libp2p::{
+        bytes::Bytes, gossipsub::TopicHash, identity::Keypair, request_response::ResponseChannel,
+        swarm::SwarmEvent, PeerId, Swarm,
+    },
 };
 use tokio::sync::broadcast;
 use tracing::{error, info};
@@ -33,22 +36,25 @@ use crate::{reader::FileHandleManager, store::DaemonDataStore};
 pub struct Daemon {
     swarm: Swarm<LocalExBehaviour>,
     server: IPCServer,
+    db: LocalExDb,
     topics: BiHashMap<TopicHash, GossipTopic>,
     auth_channels: HashMap<PeerId, ResponseChannel<LocalExAuthResponse>>,
     hostname: String,
     ctrlc_rx: broadcast::Receiver<()>,
     store: Box<dyn DaemonDataStore + Send + Sync>,
-    files_register_store: HashMap<String, FilesRegisterItem>,
+    raw_data_register: HashMap<String, Bytes>,
     file_reader_manager: FileHandleManager,
 }
 
 impl Daemon {
-    pub fn new(
+    pub async fn new(
         local_keypair: Keypair,
         hostname: String,
         sock: Option<PathBuf>,
         store: Box<dyn DaemonDataStore + Send + Sync>,
     ) -> Result<Self> {
+        let db = LocalExDb::new(None).await?;
+
         let (tx, rx) = broadcast::channel(1);
         let _ = ctrlc::set_handler(move || {
             tx.send(()).expect("close application error");
@@ -60,11 +66,12 @@ impl Daemon {
         Ok(Self {
             swarm,
             server,
+            db,
             hostname,
             store,
             topics: BiHashMap::new(),
             auth_channels: HashMap::new(),
-            files_register_store: HashMap::new(),
+            raw_data_register: HashMap::new(),
             ctrlc_rx: rx,
             file_reader_manager: FileHandleManager::default(),
         })
@@ -158,13 +165,19 @@ impl AbortListener for Daemon {
     }
 }
 
+impl RegistFileDatabase for Daemon {
+    fn db(&self) -> &LocalExDb {
+        &self.db
+    }
+}
+
 impl FilesRegisterCenter for Daemon {
-    fn store(&self) -> &HashMap<String, FilesRegisterItem> {
-        &self.files_register_store
+    fn raw_store(&self) -> &HashMap<String, Bytes> {
+        &self.raw_data_register
     }
 
-    fn store_mut(&mut self) -> &mut HashMap<String, FilesRegisterItem> {
-        &mut self.files_register_store
+    fn raw_store_mut(&mut self) -> &mut HashMap<String, Bytes> {
+        &mut self.raw_data_register
     }
 }
 
@@ -179,10 +192,16 @@ impl LocalExProtocol for Daemon {}
 
 #[async_trait]
 impl FileReaderClient for Daemon {
-    async fn read(&mut self, session: &str, id: &str, chunk: FileChunk) -> Result<()> {
+    async fn read(
+        &mut self,
+        session: &str,
+        app_id: &str,
+        file_id: &str,
+        chunk: FileChunk,
+    ) -> Result<()> {
         let handler = self
             .file_reader_manager
-            .get(session, id)
+            .get(session, &(app_id.to_string(), file_id.to_string()))
             .ok_or_else(|| anyhow!("session and id not found"))?;
 
         let mut writer = handler.write().await;
@@ -192,31 +211,35 @@ impl FileReaderClient for Daemon {
     async fn ready(
         &mut self,
         session: &str,
-        id: &str,
+        app_id: &str,
+        file_id: &str,
         size: usize,
         chunk_size: usize,
     ) -> Result<()> {
-        info!("file reader ready {session}:{id}");
+        info!("file reader ready {session}:{app_id}:{file_id}");
         self.file_reader_manager
-            .add(session.to_string(), id.to_string(), size, chunk_size)
+            .add(
+                session.to_string(),
+                (app_id.to_string(), file_id.to_string()),
+                size,
+                chunk_size,
+            )
             .await
     }
 
-    async fn done(&mut self, session: &str, id: &str) -> Result<()> {
-        if !self.files_register_store.contains_key(id) {
-            return Err(anyhow!("file id not registered"));
-        };
-
+    async fn done(&mut self, session: &str, app_id: &str, file_id: &str) -> Result<()> {
+        let id = (app_id.to_string(), file_id.to_string());
         let handler = self
             .file_reader_manager
-            .get(session, id)
+            .get(session, &id)
             .ok_or_else(|| anyhow!("session and id not found"))?;
         let mut handler = handler.write().await;
         let tmp_file_path = handler.get_file_path()?;
 
-        self.file_reader_manager.remove(session, id);
+        self.file_reader_manager.remove(session, &id);
         self.emit_event(DaemonEvent::FileUpdated(
-            id.to_string(),
+            app_id.to_string(),
+            file_id.to_string(),
             tmp_file_path.to_string_lossy().to_string(),
         ))
         .await?;

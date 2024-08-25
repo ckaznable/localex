@@ -1,4 +1,4 @@
-use libp2p::PeerId;
+use protocol::libp2p::PeerId;
 use common::{event::{ClientEvent, DaemonEvent}, peer::{DaemonPeer, PeerVerifyState}};
 
 use crate::error::FFIError;
@@ -20,10 +20,12 @@ impl From<ClientEvent> for FFIClientEvent {
             ClientEvent::RequestPeerList => Self::RequestPeerList,
             ClientEvent::DisconnectPeer(p) => Self::DisconnectPeer(p.to_bytes()),
             ClientEvent::VerifyConfirm(p, result) => Self::VerifyConfirm(p.to_bytes(), result),
-            ClientEvent::RegistFileId(_, _) => todo!(),
-            ClientEvent::UnRegistFileId(_) => todo!(),
-            ClientEvent::SendFile(_, _) => todo!(),
+            ClientEvent::RegistFileId(_, _, _) => todo!(),
+            ClientEvent::UnRegistFileId(_, _) => todo!(),
+            ClientEvent::SendFile(_, _, _) => todo!(),
             ClientEvent::SendCustomMessage(_, _) => todo!(),
+            ClientEvent::RegistRaw(_, _) => todo!(),
+            ClientEvent::UnRegistAppId(_) => todo!(),
         }
     }
 }

@@ -1,6 +1,6 @@
 use anyhow::Result;
 use daemon::Daemon;
-use libp2p::identity::Keypair;
+use protocol::libp2p::identity::Keypair;
 use protocol::LocalExProtocol;
 use store::{DaemonDataStore, DefaultStore, SecretStore};
 
@@ -39,7 +39,7 @@ pub async fn main(param: config::Config) -> Result<()> {
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|_| String::from("unknown"));
 
-    let mut deamon = Daemon::new(local_keypair, _hostname, param.sock, store)?;
+    let mut deamon = Daemon::new(local_keypair, _hostname, param.sock, store).await?;
     deamon.prepare()?;
     deamon.run().await?;
 
