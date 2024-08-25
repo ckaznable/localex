@@ -9,7 +9,7 @@ use std::{
 use anyhow::Result;
 use clap::{command, Parser};
 use common::{
-    event::{ClientEvent, ClientFileId, DaemonEvent},
+    event::{ClientEvent, DaemonEvent},
     peer::DaemonPeer,
 };
 use crossterm::{
@@ -94,10 +94,7 @@ impl App {
 
         if let Some(raw) = self.state.raw.take() {
             self.client
-                .send(ClientEvent::RegistFileId(
-                    FILE_ID.to_string(),
-                    ClientFileId::Raw(raw),
-                ))
+                .send(ClientEvent::RegistRaw(FILE_ID.to_string(), raw))
                 .await;
         }
 
@@ -120,7 +117,7 @@ impl App {
             }
         }
 
-        self.client.send(ClientEvent::UnRegistFileId(FILE_ID.to_string())).await;
+        self.client.send(ClientEvent::UnRegistRaw(FILE_ID.to_string())).await;
         Ok(())
     }
 
@@ -137,7 +134,7 @@ impl App {
             DaemonEvent::PeerList(list) => {
                 self.state.list = list;
             }
-            DaemonEvent::FileUpdated(id, path) => {
+            DaemonEvent::FileUpdated(_, id, path) => {
                 if id != FILE_ID {
                     return Ok(());
                 }
@@ -177,7 +174,7 @@ impl App {
                 let i = self.state.list_state.selected().unwrap_or(0);
                 if let Some(peer) = self.state.list.get(i) {
                     self.client
-                        .send(ClientEvent::SendFile(peer.peer_id, FILE_ID.to_string()))
+                        .send(ClientEvent::SendRaw(peer.peer_id, FILE_ID.to_string()))
                         .await;
                 }
             }

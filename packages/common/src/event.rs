@@ -12,9 +12,11 @@ pub enum ClientEvent {
     VerifyConfirm(PeerId, bool),
     RegistFileId(String, String, String),
     RegistRaw(String, Vec<u8>),
+    UnRegistRaw(String),
     UnRegistFileId(String, String),
     UnRegistAppId(String),
     SendFile(PeerId, String, String),
+    SendRaw(PeerId, String),
     SendCustomMessage(PeerId, Vec<u8>)
 }
 

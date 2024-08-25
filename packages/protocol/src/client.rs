@@ -7,6 +7,8 @@ use common::{
 use libp2p::request_response;
 use tracing::info;
 
+const RAW_APP_ID: &str = "raw";
+
 use crate::{
     auth::AuthHandler, file::{FileTransferClientProtocol, FilesRegisterCenter}, EventEmitter, LocalExProtocolAction, LocalExSwarm, LocalExContentProvider, PeersManager
 };
@@ -95,9 +97,16 @@ pub trait ClientHandler:
             UnRegistAppId(app_id) => {
                 self.unregist_app(&app_id)?;
             }
+            UnRegistRaw(id) => {
+                self.unregist_raw(&id);
+            }
             SendFile(peer, app_id, file_id) => {
                 info!("send {app_id}:{file_id} file to {peer}");
                 self.send_file(&peer, app_id, file_id).await?;
+            }
+            SendRaw(peer, file_id) => {
+                info!("send {file_id} raw to {peer}");
+                self.send_file(&peer, RAW_APP_ID.to_string(), file_id).await?;
             }
             SendCustomMessage(peer, data) => {
                 self.swarm_mut()

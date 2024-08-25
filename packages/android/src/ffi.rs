@@ -26,6 +26,8 @@ impl From<ClientEvent> for FFIClientEvent {
             ClientEvent::SendCustomMessage(_, _) => todo!(),
             ClientEvent::RegistRaw(_, _) => todo!(),
             ClientEvent::UnRegistAppId(_) => todo!(),
+            ClientEvent::UnRegistRaw(_) => todo!(),
+            ClientEvent::SendRaw(_, _) => todo!(),
         }
     }
 }
