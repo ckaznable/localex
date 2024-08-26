@@ -15,7 +15,7 @@ use protocol::{
         FileChunk, FileReaderClient, FileTransferClientProtocol, FilesRegisterCenter,
         RegistFileDatabase,
     },
-    message::{GossipTopic, GossipTopicManager, GossipsubHandler},
+    message::{GossipTopic, GossipTopicManager, GossipsubHandler, SyncOfferCollector},
     AbortListener, EventEmitter, LocalExContentProvider, LocalExProtocol, LocalExProtocolAction,
     LocalExSwarm, PeersManager,
 };
@@ -73,6 +73,7 @@ pub struct Service {
     peers: BTreeMap<PeerId, DaemonPeer>,
     daemon_tx: mpsc::Sender<FFIDaemonEvent>,
     files_register_store: HashMap<String, Bytes>,
+    sync_offer_collector: Option<SyncOfferCollector>,
 }
 
 impl Service {
@@ -89,6 +90,7 @@ impl Service {
             topics: BiHashMap::new(),
             peers: BTreeMap::new(),
             files_register_store: HashMap::new(),
+            sync_offer_collector: None,
         })
     }
 
@@ -178,7 +180,12 @@ impl GossipTopicManager for Service {
     }
 }
 
-impl GossipsubHandler for Service {}
+impl GossipsubHandler for Service {
+    fn sync_offer_collector(&mut self) -> &mut Option<SyncOfferCollector> {
+        &mut self.sync_offer_collector
+    }
+}
+
 impl ClientHandler for Service {}
 impl LocalExProtocolAction for Service {}
 

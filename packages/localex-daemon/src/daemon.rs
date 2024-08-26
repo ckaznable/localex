@@ -17,7 +17,7 @@ use protocol::{
         FileChunk, FileReaderClient, FileTransferClientProtocol, FilesRegisterCenter,
         RegistFileDatabase,
     },
-    message::{GossipTopic, GossipTopicManager, GossipsubHandler},
+    message::{GossipTopic, GossipTopicManager, GossipsubHandler, SyncOfferCollector},
     AbortListener, EventEmitter, LocalExContentProvider, LocalExProtocol, LocalExProtocolAction,
     LocalExSwarm, PeersManager,
 };
@@ -44,6 +44,7 @@ pub struct Daemon {
     store: Box<dyn DaemonDataStore + Send + Sync>,
     raw_data_register: HashMap<String, Bytes>,
     file_reader_manager: FileHandleManager,
+    sync_offer_collector: Option<SyncOfferCollector>,
 }
 
 impl Daemon {
@@ -74,6 +75,7 @@ impl Daemon {
             raw_data_register: HashMap::new(),
             ctrlc_rx: rx,
             file_reader_manager: FileHandleManager::default(),
+            sync_offer_collector: None,
         })
     }
 
@@ -181,7 +183,12 @@ impl FilesRegisterCenter for Daemon {
     }
 }
 
-impl GossipsubHandler for Daemon {}
+impl GossipsubHandler for Daemon {
+    fn sync_offer_collector(&mut self) -> &mut Option<SyncOfferCollector> {
+        &mut self.sync_offer_collector
+    }
+}
+
 impl ClientHandler for Daemon {}
 impl LocalExProtocolAction for Daemon {}
 

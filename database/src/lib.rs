@@ -12,6 +12,8 @@ use entity::regist_file::Model as RegistFileModel;
 use migration::{Migrator, MigratorTrait};
 use sea_orm::{Database, DatabaseConnection, EntityTrait};
 
+pub use entity;
+
 pub struct LocalExDb {
     db: DatabaseConnection,
 }
