@@ -184,6 +184,10 @@ impl GossipsubHandler for Service {
     fn sync_offer_collector(&mut self) -> &mut Option<SyncOfferCollector> {
         &mut self.sync_offer_collector
     }
+
+    fn sync_offer_sender(&self) -> mpsc::Sender<Vec<protocol::message::SyncRequestItem>> {
+        todo!()
+    }
 }
 
 impl ClientHandler for Service {}

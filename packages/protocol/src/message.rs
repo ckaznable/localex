@@ -1,13 +1,23 @@
-use std::{collections::{HashMap, HashSet}, fmt::Display};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Display,
+};
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use bimap::BiHashMap;
 use database::entity::regist_file;
-use libp2p::{gossipsub::{self, TopicHash}, PeerId};
+use libp2p::{
+    gossipsub::{self, TopicHash},
+    PeerId,
+};
+use tokio::sync::mpsc::Sender;
 use tracing::{error, info};
 
-use crate::{file::RegistFileDatabase, LocalExContentProvider, LocalExProtocolAction, LocalExSwarm, PeersManager};
+use crate::{
+    file::{FileTransferClientProtocol, RegistFileDatabase}, LocalExContentProvider, LocalExProtocolAction, LocalExSwarm,
+    PeersManager,
+};
 
 #[derive(Hash, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum GossipTopic {
@@ -46,19 +56,22 @@ pub struct SyncRequestItem {
     pub file_id: String,
 }
 
-#[derive(Default)]
 pub struct SyncOfferCollector {
     count: usize,
     except_count: usize,
+    tx: Sender<Vec<SyncRequestItem>>,
     request_map: HashMap<(String, String), PeerOffer>,
     received_peers: HashSet<PeerId>,
 }
 
 impl SyncOfferCollector {
-    fn new(except_count: usize) -> Self {
+    fn new(except_count: usize, tx: Sender<Vec<SyncRequestItem>>) -> Self {
         Self {
+            tx,
             except_count,
-            ..Default::default()
+            count: 0,
+            request_map: HashMap::new(),
+            received_peers: HashSet::new(),
         }
     }
 
@@ -82,11 +95,17 @@ impl SyncOfferCollector {
         self.count == self.except_count
     }
 
-    fn request_list(self) -> Vec<SyncRequestItem> {
-        self.request_map
+    async fn consume(self) {
+        let data = self
+            .request_map
             .into_iter()
-            .map(|((app_id, file_id), offer)| { SyncRequestItem { app_id, file_id, peer_id: offer.peer_id }})
-            .collect()
+            .map(|((app_id, file_id), offer)| SyncRequestItem {
+                app_id,
+                file_id,
+                peer_id: offer.peer_id,
+            })
+            .collect();
+        let _ = self.tx.send(data).await;
     }
 }
 
@@ -97,9 +116,18 @@ pub trait GossipTopicManager {
 
 #[async_trait]
 pub trait GossipsubHandler:
-    LocalExSwarm + GossipTopicManager + PeersManager + LocalExProtocolAction + LocalExContentProvider + RegistFileDatabase + LocalExSwarm + PeersManager
+    LocalExSwarm
+    + GossipTopicManager
+    + PeersManager
+    + LocalExProtocolAction
+    + LocalExContentProvider
+    + RegistFileDatabase
+    + LocalExSwarm
+    + PeersManager
+    + FileTransferClientProtocol
 {
     fn sync_offer_collector(&mut self) -> &mut Option<SyncOfferCollector>;
+    fn sync_offer_sender(&self) -> Sender<Vec<SyncRequestItem>>;
 
     fn broadcast<T: Into<Vec<u8>>>(&mut self, topic: GossipTopic, data: T) -> Result<()> {
         let topic = {
@@ -127,15 +155,11 @@ pub trait GossipsubHandler:
     }
 
     async fn broadcast_sync_offer(&mut self) {
-        if let Err(e) = self
-            .db()
-            .get_all_regist_files()
-            .await
-            .and_then(|data| {
-                let mut writer_buf = vec![];
-                ciborium::ser::into_writer(&data, &mut writer_buf)?;
-                self.broadcast(GossipTopic::SyncOffer, writer_buf)
-            }) {
+        if let Err(e) = self.db().get_all_regist_files().await.and_then(|data| {
+            let mut writer_buf = vec![];
+            ciborium::ser::into_writer(&data, &mut writer_buf)?;
+            self.broadcast(GossipTopic::SyncOffer, writer_buf)
+        }) {
             error!("async offer publish error: {e:?}");
         }
     }
@@ -159,6 +183,14 @@ pub trait GossipsubHandler:
         Ok(())
     }
 
+    async fn handle_sync_offers(&mut self, offers: Vec<SyncRequestItem>) {
+        for offer in offers {
+            if let Err(err) = self.send_file(&offer.peer_id, offer.app_id, offer.file_id).await {
+                error!("request file error: {err:?}");
+            }
+        }
+    }
+
     async fn handle_gossipsub(&mut self, event: gossipsub::Event) -> Result<()> {
         use gossipsub::Event::*;
         match event {
@@ -167,7 +199,7 @@ pub trait GossipsubHandler:
                     info!("{} just subscribed hostname topic", peer_id);
                     self.broadcast_hostname();
                 }
-            },
+            }
             Message { message, .. } => {
                 let gossipsub::Message {
                     source,
@@ -203,16 +235,33 @@ pub trait GossipsubHandler:
 
                         let except_peers_count = self.peers_mut().len();
                         if self.sync_offer_collector().is_none() {
-                            let _ = self.sync_offer_collector().insert(SyncOfferCollector::new(except_peers_count));
+                            let tx = self.sync_offer_sender();
+                            let _ = self
+                                .sync_offer_collector()
+                                .insert(SyncOfferCollector::new(except_peers_count, tx));
                         }
 
                         if let Some(collector) = &mut self.sync_offer_collector() {
-                            let list: Vec<regist_file::Model> = ciborium::from_reader(data.as_slice())?;
+                            let list: Vec<regist_file::Model> =
+                                ciborium::from_reader(data.as_slice())?;
                             for model in list {
-                                collector.insert(model.app_id, model.file_id, PeerOffer { peer_id, version: model.version as usize })
+                                collector.insert(
+                                    model.app_id,
+                                    model.file_id,
+                                    PeerOffer {
+                                        peer_id,
+                                        version: model.version as usize,
+                                    },
+                                )
                             }
 
-                            todo!()
+                            if !collector.is_received() {
+                                return Ok(());
+                            }
+                        }
+
+                        if let Some(collector) = self.sync_offer_collector().take() {
+                            collector.consume().await;
                         }
                     }
                 }

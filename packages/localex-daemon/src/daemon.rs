@@ -17,7 +17,7 @@ use protocol::{
         FileChunk, FileReaderClient, FileTransferClientProtocol, FilesRegisterCenter,
         RegistFileDatabase,
     },
-    message::{GossipTopic, GossipTopicManager, GossipsubHandler, SyncOfferCollector},
+    message::{GossipTopic, GossipTopicManager, GossipsubHandler, SyncOfferCollector, SyncRequestItem},
     AbortListener, EventEmitter, LocalExContentProvider, LocalExProtocol, LocalExProtocolAction,
     LocalExSwarm, PeersManager,
 };
@@ -28,7 +28,7 @@ use protocol::{
         swarm::SwarmEvent, PeerId, Swarm,
     },
 };
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc::{self, Receiver, Sender}};
 use tracing::{error, info};
 
 use crate::{reader::FileHandleManager, store::DaemonDataStore};
@@ -45,6 +45,8 @@ pub struct Daemon {
     raw_data_register: HashMap<String, Bytes>,
     file_reader_manager: FileHandleManager,
     sync_offer_collector: Option<SyncOfferCollector>,
+    sync_offer_tx: Sender<Vec<SyncRequestItem>>,
+    sync_offer_rx: Receiver<Vec<SyncRequestItem>>,
 }
 
 impl Daemon {
@@ -61,6 +63,8 @@ impl Daemon {
             tx.send(()).expect("close application error");
         });
 
+        let (sync_offer_tx, sync_offer_rx) = mpsc::channel(1);
+
         let server = IPCServer::new(sock, rx.resubscribe())?;
         let swarm = network::new_swarm(local_keypair)?;
 
@@ -76,6 +80,8 @@ impl Daemon {
             ctrlc_rx: rx,
             file_reader_manager: FileHandleManager::default(),
             sync_offer_collector: None,
+            sync_offer_tx,
+            sync_offer_rx,
         })
     }
 
@@ -97,6 +103,9 @@ impl Daemon {
                     if let Err(e) = self.handle_event(event).await {
                         error!("swarm event error: {e:?}");
                     }
+                },
+                sync_offer = self.sync_offer_rx.recv() => if let Some(sync_offer) = sync_offer {
+                    self.handle_sync_offers(sync_offer).await
                 }
             }
         }
@@ -186,6 +195,10 @@ impl FilesRegisterCenter for Daemon {
 impl GossipsubHandler for Daemon {
     fn sync_offer_collector(&mut self) -> &mut Option<SyncOfferCollector> {
         &mut self.sync_offer_collector
+    }
+
+    fn sync_offer_sender(&self) -> Sender<Vec<SyncRequestItem>> {
+        self.sync_offer_tx.clone()
     }
 }
 
