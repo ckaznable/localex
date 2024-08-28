@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, HashMap},
-    path::PathBuf,
+    path::PathBuf, sync::Arc,
 };
 
 use anyhow::{anyhow, Result};
@@ -28,7 +28,7 @@ use protocol::{
         swarm::SwarmEvent, PeerId, Swarm,
     },
 };
-use tokio::sync::{broadcast, mpsc::{self, Receiver, Sender}};
+use tokio::sync::{broadcast, mpsc::{self, Receiver, Sender}, RwLock};
 use tracing::{error, info};
 
 use crate::{reader::FileHandleManager, store::DaemonDataStore};
@@ -44,9 +44,10 @@ pub struct Daemon {
     store: Box<dyn DaemonDataStore + Send + Sync>,
     raw_data_register: HashMap<String, Bytes>,
     file_reader_manager: FileHandleManager,
-    sync_offer_collector: Option<SyncOfferCollector>,
+    sync_offer_collector: Arc<RwLock<Option<SyncOfferCollector>>>,
     sync_offer_tx: Sender<Vec<SyncRequestItem>>,
     sync_offer_rx: Receiver<Vec<SyncRequestItem>>,
+    sync_offer_timer_handler: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Daemon {
@@ -79,9 +80,10 @@ impl Daemon {
             raw_data_register: HashMap::new(),
             ctrlc_rx: rx,
             file_reader_manager: FileHandleManager::default(),
-            sync_offer_collector: None,
+            sync_offer_collector: Arc::new(RwLock::new(None)),
             sync_offer_tx,
             sync_offer_rx,
+            sync_offer_timer_handler: None,
         })
     }
 
@@ -193,12 +195,16 @@ impl FilesRegisterCenter for Daemon {
 }
 
 impl GossipsubHandler for Daemon {
-    fn sync_offer_collector(&mut self) -> &mut Option<SyncOfferCollector> {
-        &mut self.sync_offer_collector
-    }
-
     fn sync_offer_sender(&self) -> Sender<Vec<SyncRequestItem>> {
         self.sync_offer_tx.clone()
+    }
+
+    fn sync_offer_collector(&self) -> Arc<RwLock<Option<SyncOfferCollector>>> {
+        self.sync_offer_collector.clone()
+    }
+
+    fn sync_offer_timer_handler(&mut self) -> &mut Option<tokio::task::JoinHandle<()>> {
+        &mut self.sync_offer_timer_handler
     }
 }
 

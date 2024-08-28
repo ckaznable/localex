@@ -15,7 +15,7 @@ use protocol::{
         FileChunk, FileReaderClient, FileTransferClientProtocol, FilesRegisterCenter,
         RegistFileDatabase,
     },
-    message::{GossipTopic, GossipTopicManager, GossipsubHandler, SyncOfferCollector},
+    message::{GossipTopic, GossipTopicManager, GossipsubHandler, SyncOfferCollector, SyncRequestItem},
     AbortListener, EventEmitter, LocalExContentProvider, LocalExProtocol, LocalExProtocolAction,
     LocalExSwarm, PeersManager,
 };
@@ -181,11 +181,15 @@ impl GossipTopicManager for Service {
 }
 
 impl GossipsubHandler for Service {
-    fn sync_offer_collector(&mut self) -> &mut Option<SyncOfferCollector> {
-        &mut self.sync_offer_collector
+    fn sync_offer_sender(&self) -> mpsc::Sender<Vec<SyncRequestItem>> {
+        todo!()
     }
 
-    fn sync_offer_sender(&self) -> mpsc::Sender<Vec<protocol::message::SyncRequestItem>> {
+    fn sync_offer_timer_handler(&mut self) -> &mut Option<tokio::task::JoinHandle<()>> {
+        todo!()
+    }
+
+    fn sync_offer_collector(&self) -> Arc<tokio::sync::RwLock<Option<SyncOfferCollector>>> {
         todo!()
     }
 }

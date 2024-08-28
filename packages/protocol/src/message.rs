@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    fmt::Display,
+    fmt::Display, sync::Arc, time::Duration,
 };
 
 use anyhow::{anyhow, Result};
@@ -11,7 +11,7 @@ use libp2p::{
     gossipsub::{self, TopicHash},
     PeerId,
 };
-use tokio::sync::mpsc::Sender;
+use tokio::{sync::{mpsc::Sender, RwLock}, task::JoinHandle, time::sleep};
 use tracing::{error, info};
 
 use crate::{
@@ -126,8 +126,9 @@ pub trait GossipsubHandler:
     + PeersManager
     + FileTransferClientProtocol
 {
-    fn sync_offer_collector(&mut self) -> &mut Option<SyncOfferCollector>;
+    fn sync_offer_collector(&self) -> Arc<RwLock<Option<SyncOfferCollector>>>;
     fn sync_offer_sender(&self) -> Sender<Vec<SyncRequestItem>>;
+    fn sync_offer_timer_handler(&mut self) -> &mut Option<JoinHandle<()>>;
 
     fn broadcast<T: Into<Vec<u8>>>(&mut self, topic: GossipTopic, data: T) -> Result<()> {
         let topic = {
@@ -230,20 +231,35 @@ pub trait GossipsubHandler:
                     }
                     GossipTopic::SyncOffer => {
                         let Some(peer_id) = source else {
-                            return Ok(());
+                            return Err(anyhow!("unknown source"));
                         };
 
                         let except_peers_count = self.peers_mut().len();
-                        if self.sync_offer_collector().is_none() {
-                            let tx = self.sync_offer_sender();
-                            let _ = self
-                                .sync_offer_collector()
-                                .insert(SyncOfferCollector::new(except_peers_count, tx));
+                        let collector = self.sync_offer_collector();
+                        let collector_inner = collector.clone();
+                        let mut guard = collector.write().await;
+
+                        // create new collector if collector is not exist
+                        if guard.is_none() {
+                            let _ = guard.insert(SyncOfferCollector::new(except_peers_count, self.sync_offer_sender()));
+                            // timeout
+                            let handler = tokio::spawn(async move {
+                                sleep(Duration::from_secs(5)).await;
+                                let mut guard = collector_inner.write().await;
+                                if let Some(collector) = guard.take() {
+                                    collector.consume().await;
+                                }
+                            });
+
+                            let timer_handler = self.sync_offer_timer_handler();
+                            if let Some(last_handler) = timer_handler.replace(handler) {
+                                last_handler.abort();
+                            }
                         }
 
-                        if let Some(collector) = &mut self.sync_offer_collector() {
-                            let list: Vec<regist_file::Model> =
-                                ciborium::from_reader(data.as_slice())?;
+                        // collect the offer from other peers
+                        if let Some(collector) = guard.as_mut() {
+                            let list: Vec<regist_file::Model> = ciborium::from_reader(data.as_slice())?;
                             for model in list {
                                 collector.insert(
                                     model.app_id,
@@ -254,14 +270,14 @@ pub trait GossipsubHandler:
                                     },
                                 )
                             }
-
-                            if !collector.is_received() {
-                                return Ok(());
-                            }
                         }
 
-                        if let Some(collector) = self.sync_offer_collector().take() {
+                        // if collector is received all offers from other peers
+                        if let Some(collector) = guard.take_if(|c| c.is_received()) {
                             collector.consume().await;
+                            if let Some(h) = self.sync_offer_timer_handler().take() {
+                                h.abort();
+                            };
                         }
                     }
                 }
