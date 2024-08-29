@@ -18,7 +18,7 @@ use tokio::{
 };
 use tracing::{error, info};
 
-use crate::{AbortListener, LocalExSwarm};
+use crate::{AbortListener, LocalExSwarm, PeersManager};
 
 const CHUNK_SIZE: usize = 1024 * 1024;
 const MAX_CONCURRENT_CONNECTIONS: usize = 5;
@@ -165,7 +165,7 @@ pub trait FilesRegisterCenter: RegistFileDatabase {
 }
 
 #[async_trait]
-pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortListener + FilesRegisterCenter {
+pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortListener + FilesRegisterCenter + PeersManager {
     fn send_file_rr_response(
         &mut self,
         session: String,
@@ -367,6 +367,10 @@ pub trait FileTransferClientProtocol: LocalExSwarm + FileReaderClient + AbortLis
         response: LocalExFileResponse,
     ) -> Result<()> {
         let LocalExFileResponse { session, app_id, file_id, payload } = response;
+
+        if !self.is_verified(&peer) {
+            return Err(anyhow!("peer not verified"));
+        }
 
         use FileResponsePayload::*;
         match payload {

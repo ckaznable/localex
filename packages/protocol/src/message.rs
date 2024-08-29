@@ -186,6 +186,10 @@ pub trait GossipsubHandler:
 
     async fn handle_sync_offers(&mut self, offers: Vec<SyncRequestItem>) {
         for offer in offers {
+            if !self.is_verified(&offer.peer_id) {
+                continue;
+            }
+
             if let Err(err) = self.send_file(&offer.peer_id, offer.app_id, offer.file_id).await {
                 error!("request file error: {err:?}");
             }

@@ -150,6 +150,10 @@ impl PeersManager for Service {
         &mut self.peers
     }
 
+    fn peers(&self) -> &BTreeMap<PeerId, DaemonPeer> {
+        &self.peers
+    }
+
     fn get_peers(&mut self) -> Vec<DaemonPeer> {
         self.peers.values().cloned().collect()
     }

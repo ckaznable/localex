@@ -143,6 +143,10 @@ impl PeersManager for Daemon {
         self.store.get_peers_mut()
     }
 
+    fn peers(&self) -> &BTreeMap<PeerId, DaemonPeer> {
+        self.store.get_peers()
+    }
+
     fn get_peers(&mut self) -> Vec<DaemonPeer> {
         self.store.get_peers().values().cloned().collect()
     }

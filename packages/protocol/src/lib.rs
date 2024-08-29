@@ -41,6 +41,7 @@ pub trait EventEmitter<T> {
 
 pub trait PeersManager: LocalExSwarm {
     fn peers_mut(&mut self) -> &mut BTreeMap<PeerId, DaemonPeer>;
+    fn peers(&self) -> &BTreeMap<PeerId, DaemonPeer>;
     fn get_peers(&mut self) -> Vec<DaemonPeer>;
     fn save_peers(&mut self) -> Result<()>;
     fn on_remove_peer(&mut self, _: &PeerId);
@@ -58,6 +59,14 @@ pub trait PeersManager: LocalExSwarm {
     fn verified(&mut self, peer_id: &PeerId) {
         if let Some(peer) = self.peers_mut().get_mut(peer_id) {
             peer.state = PeerVerifyState::Verified;
+        }
+    }
+
+    fn is_verified(&self, peer_id: &PeerId) -> bool {
+        if let Some(peer) = self.peers().get(peer_id) {
+            peer.state == PeerVerifyState::Verified
+        } else {
+            false
         }
     }
 

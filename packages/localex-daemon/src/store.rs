@@ -18,7 +18,7 @@ pub trait LocalKeyStore {
 }
 
 pub trait PairPeersStore {
-    fn get_peers(&mut self) -> &BTreeMap<PeerId, DaemonPeer>;
+    fn get_peers(&self) -> &BTreeMap<PeerId, DaemonPeer>;
     fn get_peers_mut(&mut self) -> &mut BTreeMap<PeerId, DaemonPeer>;
     fn save_peers(&mut self) -> Result<()>;
 }
@@ -32,7 +32,7 @@ impl LocalKeyStore for DefaultStore {}
 
 impl PairPeersStore for DefaultStore {
     #[inline]
-    fn get_peers(&mut self) -> &BTreeMap<PeerId, DaemonPeer> {
+    fn get_peers(&self) -> &BTreeMap<PeerId, DaemonPeer> {
         &self.0
     }
 
@@ -55,11 +55,14 @@ pub struct SecretStore<'a> {
 
 impl<'a> SecretStore<'a> {
     pub async fn new() -> Result<Self> {
-        Ok(Self {
+        let mut store = Self {
             service: SecretService::connect(EncryptionType::Dh).await?,
             peers: BTreeMap::new(),
             was_peers_loaded: false,
-        })
+        };
+
+        store.peers_init().await;
+        Ok(store)
     }
 
     async fn get_secret(&self, attr: HashMap<&str, &str>) -> Option<Vec<u8>> {
@@ -140,19 +143,11 @@ impl<'a> LocalKeyStore for SecretStore<'a> {
 impl<'a> PairPeersStore for SecretStore<'a> {
     #[inline]
     fn get_peers_mut(&mut self) -> &mut BTreeMap<PeerId, DaemonPeer> {
-        block_on(async {
-            self.peers_init().await;
-        });
-
         &mut self.peers
     }
 
     #[inline]
-    fn get_peers(&mut self) -> &BTreeMap<PeerId, DaemonPeer> {
-        block_on(async {
-            self.peers_init().await;
-        });
-
+    fn get_peers(&self) -> &BTreeMap<PeerId, DaemonPeer> {
         &self.peers
     }
 
