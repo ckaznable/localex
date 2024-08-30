@@ -6,7 +6,7 @@ use std::{
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use bimap::BiHashMap;
-use common::{auth::LocalExAuthResponse, event::DaemonEvent, peer::DaemonPeer, reader::FileHandleManager};
+use common::{auth::LocalExAuthResponse, event::DaemonEvent, peer::DaemonPeer, writer::FileHandleManager};
 use futures::StreamExt;
 use localex_ipc::IPCServer;
 use network::LocalExBehaviour;
