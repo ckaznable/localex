@@ -26,7 +26,10 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
-import java.util.Locale
+import kotlinx.coroutines.withContext
+import java.nio.file.Files
+import java.nio.file.Paths
+import kotlin.io.path.exists
 
 class LocalaxService : Service() {
     private val uiScope = CoroutineScope(Dispatchers.Default + Job())
@@ -81,6 +84,7 @@ class LocalaxService : Service() {
                     is FfiDaemonEvent.PeerList -> handlePeerList(data.v1)
                     is FfiDaemonEvent.VerifyResult -> handleVerifyResult(data.v1, data.v2, data.v3)
                     is FfiDaemonEvent.Error -> Log.d(LOG_TAG, "error: ${data.v1}")
+                    is FfiDaemonEvent.FileUpdated -> handleFileUpdated(data.v1, data.v2, data.v3)
                     else -> Unit
                 }
             }
@@ -131,6 +135,21 @@ class LocalaxService : Service() {
 
     private suspend fun handleVerifyResult(peerId: ByteArray, id: String, result: Boolean) {
         _serviceFlow.emit(LocalaxServiceEvent.VerifyResult(peerId, id, result))
+    }
+
+    private suspend fun handleFileUpdated(appId: String, fileId: String, path: String) {
+        val sourceFile = Paths.get(path)
+        if (!sourceFile.exists()) {
+            Log.e(LOG_TAG, "$path is not exists")
+            return
+        }
+
+        val targetDir = Paths.get(filesDir.absolutePath, appId)
+        withContext(Dispatchers.IO) {
+            Files.createDirectories(targetDir)
+            val targetFile = targetDir.resolve(fileId)
+            Files.move(sourceFile, targetFile)
+        }
     }
 
     private suspend fun handleUIEvent() {

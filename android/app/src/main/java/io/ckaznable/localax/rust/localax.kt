@@ -1397,6 +1397,14 @@ sealed class FfiDaemonEvent {
         companion object
     }
 
+    data class FileUpdated(
+        val v1: kotlin.String,
+        val v2: kotlin.String,
+        val v3: kotlin.String,
+    ) : FfiDaemonEvent() {
+        companion object
+    }
+
     object Unknown : FfiDaemonEvent()
 
     companion object
@@ -1432,7 +1440,13 @@ public object FfiConverterTypeFFIDaemonEvent : FfiConverterRustBuffer<FfiDaemonE
                 FfiDaemonEvent.Log(
                     FfiConverterString.read(buf),
                 )
-            7 -> FfiDaemonEvent.Unknown
+            7 ->
+                FfiDaemonEvent.FileUpdated(
+                    FfiConverterString.read(buf),
+                    FfiConverterString.read(buf),
+                    FfiConverterString.read(buf),
+                )
+            8 -> FfiDaemonEvent.Unknown
             else -> throw RuntimeException("invalid enum value, something is very wrong!!")
         }
 
@@ -1483,6 +1497,15 @@ public object FfiConverterTypeFFIDaemonEvent : FfiConverterRustBuffer<FfiDaemonE
                         FfiConverterString.allocationSize(value.v1)
                 )
             }
+            is FfiDaemonEvent.FileUpdated -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterString.allocationSize(value.v1) +
+                        FfiConverterString.allocationSize(value.v2) +
+                        FfiConverterString.allocationSize(value.v3)
+                )
+            }
             is FfiDaemonEvent.Unknown -> {
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 (
@@ -1529,8 +1552,15 @@ public object FfiConverterTypeFFIDaemonEvent : FfiConverterRustBuffer<FfiDaemonE
                 FfiConverterString.write(value.v1, buf)
                 Unit
             }
-            is FfiDaemonEvent.Unknown -> {
+            is FfiDaemonEvent.FileUpdated -> {
                 buf.putInt(7)
+                FfiConverterString.write(value.v1, buf)
+                FfiConverterString.write(value.v2, buf)
+                FfiConverterString.write(value.v3, buf)
+                Unit
+            }
+            is FfiDaemonEvent.Unknown -> {
+                buf.putInt(8)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }

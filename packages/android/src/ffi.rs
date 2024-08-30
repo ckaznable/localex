@@ -56,6 +56,7 @@ pub enum FFIDaemonEvent {
     LocalInfo(String, Vec<u8>),
     Error(FFIError),
     Log(String),
+    FileUpdated(String, String, String),
     Unknown,
 }
 
@@ -66,6 +67,7 @@ impl From<DaemonEvent> for FFIDaemonEvent  {
             DaemonEvent::InComingVerify(p) => Self::InComingVerify(p.into()),
             DaemonEvent::PeerList(peers) => Self::PeerList(peers.into_iter().map(|p| p.into()).collect()),
             DaemonEvent::LocalInfo(hostname, local_id) => Self::LocalInfo(hostname, local_id.to_bytes()),
+            DaemonEvent::FileUpdated(app_id, file_id, path) => Self::FileUpdated(app_id, file_id, path),
             _ => Self::Unknown,
         }
     }
