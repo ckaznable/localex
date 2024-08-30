@@ -144,7 +144,7 @@ class LocalaxService : Service() {
             return
         }
 
-        val targetDir = Paths.get(filesDir.absolutePath, appId)
+        val targetDir = Paths.get(filesDir.absolutePath, "store", appId)
         withContext(Dispatchers.IO) {
             Files.createDirectories(targetDir)
             val targetFile = targetDir.resolve(fileId)
