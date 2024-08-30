@@ -1,10 +1,14 @@
 use std::{
-    collections::{BTreeMap, HashMap}, path::PathBuf, sync::Arc
+    collections::{BTreeMap, HashMap},
+    path::PathBuf,
+    sync::Arc,
 };
 
 use async_trait::async_trait;
 use bimap::BiHashMap;
-use common::{auth::LocalExAuthResponse, event::DaemonEvent, peer::DaemonPeer};
+use common::{
+    auth::LocalExAuthResponse, event::DaemonEvent, peer::DaemonPeer, writer::FileWriterManager,
+};
 use futures::StreamExt;
 use network::{new_swarm, LocalExBehaviour};
 use protocol::{
@@ -14,7 +18,9 @@ use protocol::{
         FileChunk, FileReaderClient, FileTransferClientProtocol, FilesRegisterCenter,
         RegistFileDatabase,
     },
-    message::{GossipTopic, GossipTopicManager, GossipsubHandler, SyncOfferCollector, SyncRequestItem},
+    message::{
+        GossipTopic, GossipTopicManager, GossipsubHandler, SyncOfferCollector, SyncRequestItem,
+    },
     AbortListener, EventEmitter, LocalExContentProvider, LocalExProtocol, LocalExProtocolAction,
     LocalExSwarm, PeersManager,
 };
@@ -25,7 +31,14 @@ use protocol::{
         swarm::SwarmEvent, PeerId, Swarm,
     },
 };
-use tokio::{runtime::Runtime, sync::{mpsc::{self, Receiver, Sender}, Mutex, RwLock}, task::JoinHandle};
+use tokio::{
+    runtime::Runtime,
+    sync::{
+        mpsc::{self, Receiver, Sender},
+        Mutex, RwLock,
+    },
+    task::JoinHandle,
+};
 
 use crate::{error::FFIError, ffi::FFIDaemonEvent, get_client_event_receiver, get_quit_rx};
 
@@ -77,6 +90,7 @@ pub struct Service {
     sync_offer_tx: Sender<Vec<SyncRequestItem>>,
     sync_offer_rx: Option<Receiver<Vec<SyncRequestItem>>>,
     sync_offer_timer_handler: Option<JoinHandle<()>>,
+    file_writer_manager: FileWriterManager,
     db: LocalExDb,
 }
 
@@ -88,11 +102,10 @@ impl Service {
         fs_dir: PathBuf,
     ) -> anyhow::Result<Self> {
         let (sync_offer_tx, sync_offer_rx) = mpsc::channel(1);
+        let fs_cache_dir = fs_dir.join("cache");
 
-        let rt  = Runtime::new()?;
-        let db = rt.block_on(async {
-            LocalExDb::new(Some(fs_dir)).await
-        })?;
+        let rt = Runtime::new()?;
+        let db = rt.block_on(async { LocalExDb::new(Some(fs_dir)).await })?;
         drop(rt);
 
         Ok(Self {
@@ -107,6 +120,7 @@ impl Service {
             sync_offer_tx,
             sync_offer_rx: Some(sync_offer_rx),
             sync_offer_timer_handler: None,
+            file_writer_manager: FileWriterManager::with_cache_dir(fs_cache_dir),
             db,
         })
     }
@@ -240,7 +254,13 @@ impl FileReaderClient for Service {
         file_id: &str,
         chunk: FileChunk,
     ) -> anyhow::Result<()> {
-        todo!()
+        let handler = self
+            .file_writer_manager
+            .get(session, &(app_id.to_string(), file_id.to_string()))
+            .ok_or_else(|| anyhow::anyhow!("session and id not found"))?;
+
+        let mut writer = handler.write().await;
+        writer.write(&chunk.chunk, chunk.offset).await
     }
 
     async fn ready(
@@ -251,11 +271,33 @@ impl FileReaderClient for Service {
         size: usize,
         chunk_size: usize,
     ) -> anyhow::Result<()> {
-        todo!()
+        self.file_writer_manager
+            .add(
+                session.to_string(),
+                (app_id.to_string(), file_id.to_string()),
+                size,
+                chunk_size,
+            )
+            .await
     }
 
     async fn done(&mut self, session: &str, app_id: &str, file_id: &str) -> anyhow::Result<()> {
-        todo!()
+        let id = (app_id.to_string(), file_id.to_string());
+        let handler = self
+            .file_writer_manager
+            .get(session, &id)
+            .ok_or_else(|| anyhow::anyhow!("session and id not found"))?;
+        let mut handler = handler.write().await;
+        let tmp_file_path = handler.get_file_path()?;
+
+        self.file_writer_manager.remove(session, &id);
+        self.emit_event(DaemonEvent::FileUpdated(
+            app_id.to_string(),
+            file_id.to_string(),
+            tmp_file_path.to_string_lossy().to_string(),
+        ))
+        .await?;
+        Ok(())
     }
 }
 
