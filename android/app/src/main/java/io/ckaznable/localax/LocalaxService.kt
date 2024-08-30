@@ -17,6 +17,7 @@ import io.ckaznable.localax.rust.FfiClientEvent
 import io.ckaznable.localax.rust.FfiDaemonEvent
 import io.ckaznable.localax.rust.FfiDaemonPeer
 import io.ckaznable.localax.rust.dispatch
+import io.ckaznable.localax.rust.getKeyPair
 import io.ckaznable.localax.rust.listen
 import io.ckaznable.localax.rust.recv
 import kotlinx.coroutines.CoroutineScope
@@ -35,6 +36,7 @@ class LocalaxService : Service() {
     private val uiScope = CoroutineScope(Dispatchers.Default + Job())
     private val serviceScope = CoroutineScope(Dispatchers.Default + Job())
     private val cleanupScope = CoroutineScope(Dispatchers.Default + Job())
+    private val secureStorage = SecureByteArrayStorage(this)
     private var isListeningDaemon = false
 
     private val _serviceFlow = MutableSharedFlow<LocalaxServiceEvent>()
@@ -58,7 +60,7 @@ class LocalaxService : Service() {
         startForeground(NOTIFICATION_ID, createNotification())
 
         Log.d(LOG_TAG, "localax init with sqlite path: ${filesDir.absolutePath}")
-        io.ckaznable.localax.rust.init(getDeviceName(), null, filesDir.absolutePath)
+        io.ckaznable.localax.rust.init(getDeviceName(), getOrCreateKeyPair(), filesDir.absolutePath)
     }
 
     private fun getDeviceName(): String {
@@ -122,6 +124,17 @@ class LocalaxService : Service() {
             .setContentText("Service is running...")
             .setContentIntent(pendingIntent)
             .build()
+    }
+
+    private fun getOrCreateKeyPair(): ByteArray? {
+        val lastKeyPair = secureStorage.getByteArray(StorageKeys.KeyPair)
+        if (lastKeyPair != null) {
+            return lastKeyPair
+        }
+
+        val k = getKeyPair() ?: return null
+        secureStorage.saveByteArray(StorageKeys.KeyPair, k)
+        return k
     }
 
     private suspend fun handleInComingVerify(peer: FfiDaemonPeer) {
