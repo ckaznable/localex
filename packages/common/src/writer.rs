@@ -6,13 +6,13 @@ use tokio::{fs::File, io::{AsyncSeekExt, AsyncWriteExt}, sync::RwLock};
 type FileId = (String, String);
 
 #[derive(Default)]
-pub struct FileHandleManager {
-    map: HashMap<String, HashMap<FileId, Arc<RwLock<FileHandler>>>>,
+pub struct FileWriterManager {
+    map: HashMap<String, HashMap<FileId, Arc<RwLock<FileWriter>>>>,
 }
 
-impl FileHandleManager {
+impl FileWriterManager {
     pub async fn add(&mut self, session: String, id: FileId, size: usize, chunk_size: usize) -> Result<()> {
-        let handler = FileHandler::new(size, chunk_size).await?;
+        let handler = FileWriter::new(size, chunk_size).await?;
         let handler = Arc::new(RwLock::new(handler));
 
         match self.map.get_mut(&session) {
@@ -29,7 +29,7 @@ impl FileHandleManager {
         Ok(())
     }
 
-    pub fn get(&self, session: &str, id: &FileId) -> Option<Arc<RwLock<FileHandler>>> {
+    pub fn get(&self, session: &str, id: &FileId) -> Option<Arc<RwLock<FileWriter>>> {
         self.map.get(session).and_then(|ids| ids.get(id)).cloned()
     }
 
@@ -47,14 +47,14 @@ impl FileHandleManager {
     }
 }
 
-pub struct FileHandler {
+pub struct FileWriter {
     file_path: PathBuf,
     file: Option<File>,
     chunk_size: usize,
     size: usize,
 }
 
-impl FileHandler {
+impl FileWriter {
     pub async fn new(size: usize, chunk_size: usize) -> Result<Self> {
         let filename = format!("localex-tmp-{}", uuid::Uuid::new_v4());
         let path = dirs::cache_dir()

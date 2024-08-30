@@ -6,7 +6,7 @@ use std::{
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use bimap::BiHashMap;
-use common::{auth::LocalExAuthResponse, event::DaemonEvent, peer::DaemonPeer, writer::FileHandleManager};
+use common::{auth::LocalExAuthResponse, event::DaemonEvent, peer::DaemonPeer, writer::FileWriterManager};
 use futures::StreamExt;
 use localex_ipc::IPCServer;
 use network::LocalExBehaviour;
@@ -43,7 +43,7 @@ pub struct Daemon {
     ctrlc_rx: broadcast::Receiver<()>,
     store: Box<dyn DaemonDataStore + Send + Sync>,
     raw_data_register: HashMap<String, Bytes>,
-    file_reader_manager: FileHandleManager,
+    file_reader_manager: FileWriterManager,
     sync_offer_collector: Arc<RwLock<Option<SyncOfferCollector>>>,
     sync_offer_tx: Sender<Vec<SyncRequestItem>>,
     sync_offer_rx: Receiver<Vec<SyncRequestItem>>,
@@ -79,7 +79,7 @@ impl Daemon {
             auth_channels: HashMap::new(),
             raw_data_register: HashMap::new(),
             ctrlc_rx: rx,
-            file_reader_manager: FileHandleManager::default(),
+            file_reader_manager: FileWriterManager::default(),
             sync_offer_collector: Arc::new(RwLock::new(None)),
             sync_offer_tx,
             sync_offer_rx,
