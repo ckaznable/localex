@@ -20,10 +20,10 @@ pub static mut QUIT_SENDER: Option<broadcast::Sender<()>> = None;
 pub static mut QUIT_RECEIVER: Option<broadcast::Receiver<()>> = None;
 
 pub fn get_service() -> Result<Arc<Mutex<ServiceManager>>, FFIError> {
-    get_or_create_service(None, None, None)
+    get_or_create_service(None, None, None, None)
 }
 
-pub fn get_or_create_service(keypair: Option<Keypair>, hostname: Option<String>, daemon_tx: Option<mpsc::Sender<FFIDaemonEvent>>) -> Result<Arc<Mutex<ServiceManager>>, FFIError> {
+pub fn get_or_create_service(keypair: Option<Keypair>, hostname: Option<String>, daemon_tx: Option<mpsc::Sender<FFIDaemonEvent>>, fs_dir: Option<String>) -> Result<Arc<Mutex<ServiceManager>>, FFIError> {
     unsafe {
         if keypair.is_none() && SERVICE.is_none() && daemon_tx.is_none() {
             return Err(FFIError::AccessServiceBeforeInitError)
@@ -35,6 +35,7 @@ pub fn get_or_create_service(keypair: Option<Keypair>, hostname: Option<String>,
                 keypair,
                 hostname.unwrap_or_else(|| String::from("unknown")),
                 daemon_tx.unwrap(),
+                fs_dir.unwrap().into(),
             ).map_err(|_| FFIError::CreateServiceError)?;
 
             let service = Arc::new(Mutex::new(service));

@@ -1,6 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
-    sync::Arc,
+    collections::{BTreeMap, HashMap}, path::PathBuf, sync::Arc
 };
 
 use async_trait::async_trait;
@@ -26,7 +25,7 @@ use protocol::{
         swarm::SwarmEvent, PeerId, Swarm,
     },
 };
-use tokio::sync::{mpsc, Mutex};
+use tokio::{runtime::Runtime, sync::{mpsc::{self, Receiver, Sender}, Mutex, RwLock}, task::JoinHandle};
 
 use crate::{error::FFIError, ffi::FFIDaemonEvent, get_client_event_receiver, get_quit_rx};
 
@@ -40,8 +39,9 @@ impl ServiceManager {
         local_keypair: Keypair,
         hostname: String,
         daemon_tx: mpsc::Sender<FFIDaemonEvent>,
+        fs_dir: PathBuf,
     ) -> anyhow::Result<Self> {
-        let service = Service::new(local_keypair, hostname, daemon_tx.clone())?;
+        let service = Service::new(local_keypair, hostname, daemon_tx.clone(), fs_dir)?;
 
         Ok(Self {
             service: Arc::new(Mutex::new(service)),
@@ -73,7 +73,11 @@ pub struct Service {
     peers: BTreeMap<PeerId, DaemonPeer>,
     daemon_tx: mpsc::Sender<FFIDaemonEvent>,
     files_register_store: HashMap<String, Bytes>,
-    sync_offer_collector: Option<SyncOfferCollector>,
+    sync_offer_collector: Arc<RwLock<Option<SyncOfferCollector>>>,
+    sync_offer_tx: Sender<Vec<SyncRequestItem>>,
+    sync_offer_rx: Option<Receiver<Vec<SyncRequestItem>>>,
+    sync_offer_timer_handler: Option<JoinHandle<()>>,
+    db: LocalExDb,
 }
 
 impl Service {
@@ -81,7 +85,16 @@ impl Service {
         local_keypair: Keypair,
         hostname: String,
         daemon_tx: mpsc::Sender<FFIDaemonEvent>,
+        fs_dir: PathBuf,
     ) -> anyhow::Result<Self> {
+        let (sync_offer_tx, sync_offer_rx) = mpsc::channel(1);
+
+        let rt  = Runtime::new()?;
+        let db = rt.block_on(async {
+            LocalExDb::new(Some(fs_dir)).await
+        })?;
+        drop(rt);
+
         Ok(Self {
             swarm: new_swarm(local_keypair)?,
             hostname,
@@ -90,7 +103,11 @@ impl Service {
             topics: BiHashMap::new(),
             peers: BTreeMap::new(),
             files_register_store: HashMap::new(),
-            sync_offer_collector: None,
+            sync_offer_collector: Arc::new(RwLock::new(None)),
+            sync_offer_tx,
+            sync_offer_rx: Some(sync_offer_rx),
+            sync_offer_timer_handler: None,
+            db,
         })
     }
 
@@ -98,6 +115,7 @@ impl Service {
         let rx = get_client_event_receiver().unwrap();
         let mut client_rx = rx.lock().await;
         let mut quit_rx = get_quit_rx().unwrap();
+        let mut sync_offer_rx = self.sync_offer_rx.take().unwrap();
 
         loop {
             tokio::select! {
@@ -114,6 +132,9 @@ impl Service {
                 rx = quit_rx.recv()  => if rx.is_ok() {
                     return;
                 },
+                sync_offer = sync_offer_rx.recv() => if let Some(sync_offer) = sync_offer {
+                    self.handle_sync_offers(sync_offer).await
+                }
             }
         }
     }
@@ -185,16 +206,16 @@ impl GossipTopicManager for Service {
 }
 
 impl GossipsubHandler for Service {
-    fn sync_offer_sender(&self) -> mpsc::Sender<Vec<SyncRequestItem>> {
-        todo!()
+    fn sync_offer_sender(&self) -> Sender<Vec<SyncRequestItem>> {
+        self.sync_offer_tx.clone()
     }
 
-    fn sync_offer_timer_handler(&mut self) -> &mut Option<tokio::task::JoinHandle<()>> {
-        todo!()
+    fn sync_offer_timer_handler(&mut self) -> &mut Option<JoinHandle<()>> {
+        &mut self.sync_offer_timer_handler
     }
 
-    fn sync_offer_collector(&self) -> Arc<tokio::sync::RwLock<Option<SyncOfferCollector>>> {
-        todo!()
+    fn sync_offer_collector(&self) -> Arc<RwLock<Option<SyncOfferCollector>>> {
+        self.sync_offer_collector.clone()
     }
 }
 
@@ -203,7 +224,7 @@ impl LocalExProtocolAction for Service {}
 
 impl RegistFileDatabase for Service {
     fn db(&self) -> &LocalExDb {
-        todo!()
+        &self.db
     }
 }
 

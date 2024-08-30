@@ -70,7 +70,7 @@ dependencies {
 }
 
 cargoNdk {
-    targets = arrayListOf("arm64", "arm")
+    targets = arrayListOf("arm64", "arm", "x86_64")
     module = "../packages/android"
     librariesNames = arrayListOf("liblocalax.so")
     targetDirectory = "../../target"

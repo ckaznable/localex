@@ -752,6 +752,7 @@ internal interface UniffiLib : Library {
     fun uniffi_localax_fn_func_init(
         `hostname`: RustBuffer.ByValue,
         `bytekey`: RustBuffer.ByValue,
+        `fsDir`: RustBuffer.ByValue,
         uniffi_out_err: UniffiRustCallStatus,
     ): Unit
 
@@ -1010,7 +1011,7 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_localax_checksum_func_getkeypair() != 30302.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_localax_checksum_func_init() != 63973.toShort()) {
+    if (lib.uniffi_localax_checksum_func_init() != 64536.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_localax_checksum_func_listen() != 53275.toShort()) {
@@ -1809,10 +1810,12 @@ fun `getKeyPair`(): kotlin.ByteArray? =
 fun `init`(
     `hostname`: kotlin.String,
     `bytekey`: kotlin.ByteArray?,
+    `fsDir`: kotlin.String,
 ) = uniffiRustCallWithError(FfiException) { _status ->
     UniffiLib.INSTANCE.uniffi_localax_fn_func_init(
         FfiConverterString.lower(`hostname`),
         FfiConverterOptionalByteArray.lower(`bytekey`),
+        FfiConverterString.lower(`fsDir`),
         _status,
     )
 }

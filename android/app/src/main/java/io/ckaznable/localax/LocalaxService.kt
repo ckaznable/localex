@@ -51,10 +51,11 @@ class LocalaxService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        Log.d(LOG_TAG, "init foreground notification")
         startForeground(NOTIFICATION_ID, createNotification())
 
-        Log.d(LOG_TAG, "localax init")
-        io.ckaznable.localax.rust.init(getDeviceName(), null)
+        Log.d(LOG_TAG, "localax init with sqlite path: ${filesDir.absolutePath}")
+        io.ckaznable.localax.rust.init(getDeviceName(), null, filesDir.absolutePath)
     }
 
     private fun getDeviceName(): String {
