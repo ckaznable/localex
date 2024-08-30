@@ -6,7 +6,7 @@ use std::{
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use bimap::BiHashMap;
-use common::{auth::LocalExAuthResponse, event::DaemonEvent, peer::DaemonPeer};
+use common::{auth::LocalExAuthResponse, event::DaemonEvent, peer::DaemonPeer, reader::FileHandleManager};
 use futures::StreamExt;
 use localex_ipc::IPCServer;
 use network::LocalExBehaviour;
@@ -31,7 +31,7 @@ use protocol::{
 use tokio::sync::{broadcast, mpsc::{self, Receiver, Sender}, RwLock};
 use tracing::{error, info};
 
-use crate::{reader::FileHandleManager, store::DaemonDataStore};
+use crate::store::DaemonDataStore;
 
 pub struct Daemon {
     swarm: Swarm<LocalExBehaviour>,

@@ -923,10 +923,14 @@ checksum = "0b6a852b24ab71dffc585bcb46eaf7959d175cb865a7152e35b348d1b2960422"
 name = "common"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "bit-vec",
+ "dirs",
  "libp2p",
  "serde",
  "serde_repr",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

@@ -3,5 +3,6 @@ pub mod event;
 pub mod peer;
 pub mod file;
 pub mod util;
+pub mod reader;
 
 pub use util::U32BitVec as BitVec;
