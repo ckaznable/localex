@@ -10,6 +10,7 @@ pub enum FFIClientEvent {
     RequestPeerList,
     DisconnectPeer(Vec<u8>),
     VerifyConfirm(Vec<u8>, bool),
+    RegistFileId(String, String, String),
 }
 
 impl From<ClientEvent> for FFIClientEvent {
@@ -20,7 +21,7 @@ impl From<ClientEvent> for FFIClientEvent {
             ClientEvent::RequestPeerList => Self::RequestPeerList,
             ClientEvent::DisconnectPeer(p) => Self::DisconnectPeer(p.to_bytes()),
             ClientEvent::VerifyConfirm(p, result) => Self::VerifyConfirm(p.to_bytes(), result),
-            ClientEvent::RegistFileId(_, _, _) => todo!(),
+            ClientEvent::RegistFileId(app_id, file_id, path) => Self::RegistFileId(app_id, file_id, path),
             ClientEvent::UnRegistFileId(_, _) => todo!(),
             ClientEvent::SendFile(_, _, _) => todo!(),
             ClientEvent::SendCustomMessage(_, _) => todo!(),
@@ -42,6 +43,7 @@ impl TryFrom<FFIClientEvent> for ClientEvent {
             FFIClientEvent::RequestPeerList => Self::RequestPeerList,
             FFIClientEvent::DisconnectPeer(p) => Self::DisconnectPeer(PeerId::from_bytes(&p)?),
             FFIClientEvent::VerifyConfirm(p, result) => Self::VerifyConfirm(PeerId::from_bytes(&p)?, result),
+            FFIClientEvent::RegistFileId(app_id, file_id, path) => Self::RegistFileId(app_id, file_id, path),
         };
 
         Ok(event)

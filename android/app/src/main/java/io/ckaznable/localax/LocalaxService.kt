@@ -30,6 +30,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.nio.file.Files
 import java.nio.file.Paths
+import kotlin.io.path.absolutePathString
 import kotlin.io.path.exists
 
 class LocalaxService : Service() {
@@ -158,11 +159,13 @@ class LocalaxService : Service() {
         }
 
         val targetDir = Paths.get(filesDir.absolutePath, "store", appId)
+        val targetFile = targetDir.resolve(fileId)
         withContext(Dispatchers.IO) {
             Files.createDirectories(targetDir)
-            val targetFile = targetDir.resolve(fileId)
             Files.move(sourceFile, targetFile)
         }
+
+        dispatch(FfiClientEvent.RegistFileId(appId, fileId, targetFile.absolutePathString()))
     }
 
     private suspend fun handleUIEvent() {

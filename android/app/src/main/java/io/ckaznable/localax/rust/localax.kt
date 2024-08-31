@@ -1262,6 +1262,14 @@ sealed class FfiClientEvent {
         companion object
     }
 
+    data class RegistFileId(
+        val v1: kotlin.String,
+        val v2: kotlin.String,
+        val v3: kotlin.String,
+    ) : FfiClientEvent() {
+        companion object
+    }
+
     companion object
 }
 
@@ -1282,6 +1290,12 @@ public object FfiConverterTypeFFIClientEvent : FfiConverterRustBuffer<FfiClientE
                 FfiClientEvent.VerifyConfirm(
                     FfiConverterByteArray.read(buf),
                     FfiConverterBoolean.read(buf),
+                )
+            6 ->
+                FfiClientEvent.RegistFileId(
+                    FfiConverterString.read(buf),
+                    FfiConverterString.read(buf),
+                    FfiConverterString.read(buf),
                 )
             else -> throw RuntimeException("invalid enum value, something is very wrong!!")
         }
@@ -1322,6 +1336,15 @@ public object FfiConverterTypeFFIClientEvent : FfiConverterRustBuffer<FfiClientE
                         FfiConverterBoolean.allocationSize(value.v2)
                 )
             }
+            is FfiClientEvent.RegistFileId -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterString.allocationSize(value.v1) +
+                        FfiConverterString.allocationSize(value.v2) +
+                        FfiConverterString.allocationSize(value.v3)
+                )
+            }
         }
 
     override fun write(
@@ -1351,6 +1374,13 @@ public object FfiConverterTypeFFIClientEvent : FfiConverterRustBuffer<FfiClientE
                 buf.putInt(5)
                 FfiConverterByteArray.write(value.v1, buf)
                 FfiConverterBoolean.write(value.v2, buf)
+                Unit
+            }
+            is FfiClientEvent.RegistFileId -> {
+                buf.putInt(6)
+                FfiConverterString.write(value.v1, buf)
+                FfiConverterString.write(value.v2, buf)
+                FfiConverterString.write(value.v3, buf)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
