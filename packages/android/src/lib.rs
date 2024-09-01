@@ -16,7 +16,7 @@ mod error;
 mod ffi;
 
 #[uniffi::export]
-pub fn init(hostname: String, bytekey: Option<Vec<u8>>, fs_dir: String) -> Result<(), FFIError> {
+pub fn init(hostname: String, bytekey: Option<Vec<u8>>, fs_dir: String, peers: Option<Vec<u8>>) -> Result<(), FFIError> {
     #[cfg(target_os = "android")]
     init_logger();
 
@@ -26,7 +26,7 @@ pub fn init(hostname: String, bytekey: Option<Vec<u8>>, fs_dir: String) -> Resul
         .and_then(|secret| Keypair::from_protobuf_encoding(&secret).ok())
         .or_else(|| Some(Keypair::generate_ed25519()))
         .zip(get_or_create_channel().ok())
-        .and_then(|(keypair, (sender, _))| get_or_create_service(Some(keypair), Some(hostname), Some(sender), Some(fs_dir)).ok())
+        .and_then(|(keypair, (sender, _))| get_or_create_service(Some(keypair), Some(hostname), Some(sender), Some(fs_dir), peers).ok())
         .ok_or(FFIError::InitError)
         .map(|_| ())
 }

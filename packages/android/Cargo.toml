@@ -15,6 +15,7 @@ uniffi = { version = "0.28.0", features = ["tokio"] }
 thiserror = "1.0.63"
 async-trait = "0.1.81"
 bimap = "0.6.3"
+ciborium = "0.2.2"
 
 [build-dependencies]
 uniffi = { version = "0.28.0", features = ["build"] }

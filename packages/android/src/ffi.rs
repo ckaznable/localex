@@ -59,6 +59,7 @@ pub enum FFIDaemonEvent {
     Error(FFIError),
     Log(String),
     FileUpdated(String, String, String),
+    SavePeers(Vec<u8>),
     Unknown,
 }
 

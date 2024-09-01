@@ -29,4 +29,5 @@ class SecureByteArrayStorage(context: Context) {
 
 enum class StorageKeys(val key: String) {
     KeyPair("keypair"),
+    Peers("peers"),
 }

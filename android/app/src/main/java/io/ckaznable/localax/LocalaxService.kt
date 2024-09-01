@@ -61,7 +61,8 @@ class LocalaxService : Service() {
         startForeground(NOTIFICATION_ID, createNotification())
 
         Log.d(LOG_TAG, "localax init with sqlite path: ${filesDir.absolutePath}")
-        io.ckaznable.localax.rust.init(getDeviceName(), getOrCreateKeyPair(), filesDir.absolutePath)
+        val peers = secureStorage.getByteArray(StorageKeys.Peers)
+        io.ckaznable.localax.rust.init(getDeviceName(), getOrCreateKeyPair(), filesDir.absolutePath, peers)
     }
 
     private fun getDeviceName(): String {
@@ -88,6 +89,7 @@ class LocalaxService : Service() {
                     is FfiDaemonEvent.VerifyResult -> handleVerifyResult(data.v1, data.v2, data.v3)
                     is FfiDaemonEvent.Error -> Log.d(LOG_TAG, "error: ${data.v1}")
                     is FfiDaemonEvent.FileUpdated -> handleFileUpdated(data.v1, data.v2, data.v3)
+                    is FfiDaemonEvent.SavePeers -> secureStorage.saveByteArray(StorageKeys.Peers, data.v1)
                     else -> Unit
                 }
             }

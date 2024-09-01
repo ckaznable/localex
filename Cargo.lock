@@ -2620,6 +2620,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "bimap",
+ "ciborium",
  "common",
  "futures",
  "logger",

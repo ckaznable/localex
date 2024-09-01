@@ -9,7 +9,7 @@ use bimap::BiHashMap;
 use common::{
     auth::LocalExAuthResponse, event::DaemonEvent, peer::DaemonPeer, writer::FileWriterManager,
 };
-use futures::StreamExt;
+use futures::{executor::block_on, StreamExt};
 use network::{new_swarm, LocalExBehaviour};
 use protocol::{
     auth::AuthHandler,
@@ -53,8 +53,12 @@ impl ServiceManager {
         hostname: String,
         daemon_tx: mpsc::Sender<FFIDaemonEvent>,
         fs_dir: PathBuf,
+        peers: Option<Vec<u8>>,
     ) -> anyhow::Result<Self> {
-        let service = Service::new(local_keypair, hostname, daemon_tx.clone(), fs_dir)?;
+        let peers = peers
+            .and_then(|p| Self::decode_peers(&p).ok())
+            .unwrap_or_else(BTreeMap::new);
+        let service = Service::new(local_keypair, hostname, daemon_tx.clone(), fs_dir, peers)?;
 
         Ok(Self {
             service: Arc::new(Mutex::new(service)),
@@ -75,6 +79,11 @@ impl ServiceManager {
 
         guard.run().await;
         Ok(())
+    }
+
+    fn decode_peers(peers: &[u8]) -> anyhow::Result<BTreeMap<PeerId, DaemonPeer>> {
+        let peers: BTreeMap<PeerId, DaemonPeer> = ciborium::from_reader(peers)?;
+        Ok(peers)
     }
 }
 
@@ -100,6 +109,7 @@ impl Service {
         hostname: String,
         daemon_tx: mpsc::Sender<FFIDaemonEvent>,
         fs_dir: PathBuf,
+        peers: BTreeMap<PeerId, DaemonPeer>,
     ) -> anyhow::Result<Self> {
         let (sync_offer_tx, sync_offer_rx) = mpsc::channel(1);
         let fs_cache_dir = fs_dir.join("cache");
@@ -109,12 +119,12 @@ impl Service {
         drop(rt);
 
         Ok(Self {
-            swarm: new_swarm(local_keypair)?,
             hostname,
             daemon_tx,
+            peers,
+            swarm: new_swarm(local_keypair)?,
             auth_channels: HashMap::new(),
             topics: BiHashMap::new(),
-            peers: BTreeMap::new(),
             files_register_store: HashMap::new(),
             sync_offer_collector: Arc::new(RwLock::new(None)),
             sync_offer_tx,
@@ -123,6 +133,13 @@ impl Service {
             file_writer_manager: FileWriterManager::with_cache_dir(fs_cache_dir),
             db,
         })
+    }
+
+    async fn emit_ffi_event(&mut self, event: FFIDaemonEvent) -> anyhow::Result<()> {
+        self.daemon_tx
+            .send(event)
+            .await
+            .map_err(anyhow::Error::from)
     }
 
     pub async fn run(&mut self) {
@@ -193,8 +210,10 @@ impl PeersManager for Service {
         self.peers.values().cloned().collect()
     }
 
-    /// implement in android side
     fn save_peers(&mut self) -> anyhow::Result<()> {
+        let mut writer_buf = vec![];
+        ciborium::ser::into_writer(&self.peers, &mut writer_buf)?;
+        block_on(async { self.emit_ffi_event(FFIDaemonEvent::SavePeers(writer_buf)).await })?;
         Ok(())
     }
 

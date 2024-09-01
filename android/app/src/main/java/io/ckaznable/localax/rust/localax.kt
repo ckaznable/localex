@@ -753,6 +753,7 @@ internal interface UniffiLib : Library {
         `hostname`: RustBuffer.ByValue,
         `bytekey`: RustBuffer.ByValue,
         `fsDir`: RustBuffer.ByValue,
+        `peers`: RustBuffer.ByValue,
         uniffi_out_err: UniffiRustCallStatus,
     ): Unit
 
@@ -1011,7 +1012,7 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_localax_checksum_func_getkeypair() != 30302.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_localax_checksum_func_init() != 64536.toShort()) {
+    if (lib.uniffi_localax_checksum_func_init() != 23260.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_localax_checksum_func_listen() != 53275.toShort()) {
@@ -1435,6 +1436,12 @@ sealed class FfiDaemonEvent {
         companion object
     }
 
+    data class SavePeers(
+        val v1: kotlin.ByteArray,
+    ) : FfiDaemonEvent() {
+        companion object
+    }
+
     object Unknown : FfiDaemonEvent()
 
     companion object
@@ -1476,7 +1483,11 @@ public object FfiConverterTypeFFIDaemonEvent : FfiConverterRustBuffer<FfiDaemonE
                     FfiConverterString.read(buf),
                     FfiConverterString.read(buf),
                 )
-            8 -> FfiDaemonEvent.Unknown
+            8 ->
+                FfiDaemonEvent.SavePeers(
+                    FfiConverterByteArray.read(buf),
+                )
+            9 -> FfiDaemonEvent.Unknown
             else -> throw RuntimeException("invalid enum value, something is very wrong!!")
         }
 
@@ -1536,6 +1547,13 @@ public object FfiConverterTypeFFIDaemonEvent : FfiConverterRustBuffer<FfiDaemonE
                         FfiConverterString.allocationSize(value.v3)
                 )
             }
+            is FfiDaemonEvent.SavePeers -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterByteArray.allocationSize(value.v1)
+                )
+            }
             is FfiDaemonEvent.Unknown -> {
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 (
@@ -1589,8 +1607,13 @@ public object FfiConverterTypeFFIDaemonEvent : FfiConverterRustBuffer<FfiDaemonE
                 FfiConverterString.write(value.v3, buf)
                 Unit
             }
-            is FfiDaemonEvent.Unknown -> {
+            is FfiDaemonEvent.SavePeers -> {
                 buf.putInt(8)
+                FfiConverterByteArray.write(value.v1, buf)
+                Unit
+            }
+            is FfiDaemonEvent.Unknown -> {
+                buf.putInt(9)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -1871,11 +1894,13 @@ fun `init`(
     `hostname`: kotlin.String,
     `bytekey`: kotlin.ByteArray?,
     `fsDir`: kotlin.String,
+    `peers`: kotlin.ByteArray?,
 ) = uniffiRustCallWithError(FfiException) { _status ->
     UniffiLib.INSTANCE.uniffi_localax_fn_func_init(
         FfiConverterString.lower(`hostname`),
         FfiConverterOptionalByteArray.lower(`bytekey`),
         FfiConverterString.lower(`fsDir`),
+        FfiConverterOptionalByteArray.lower(`peers`),
         _status,
     )
 }
