@@ -2632,17 +2632,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "localex"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "futures",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "localex-daemon"
 version = "0.1.0"
 dependencies = [

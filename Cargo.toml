@@ -6,7 +6,6 @@ members = [
   "database/migration",
   "packages/android",
   "packages/common",
-  "packages/localex",
   "packages/localex-daemon",
   "packages/localex-gui",
   "packages/localex-ipc",
